@@ -1,0 +1,30 @@
+# Production overrides
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes:
+      - static_files:/app/staticfiles   # keep named volumes, drop code mount
+      - media_files:/app/media
+
+  celery:
+    build:
+      context: ./backend
+      target: production
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes: []
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+    ports:
+      - "80:80"
+    volumes: []

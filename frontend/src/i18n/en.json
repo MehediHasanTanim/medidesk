@@ -1,0 +1,55 @@
+{
+  "app": { "name": "MediDesk", "tagline": "Clinic Management System" },
+  "auth": {
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "username": "Username",
+    "password": "Password",
+    "changePassword": "Change Password",
+    "oldPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "profile": "My Profile",
+    "editProfile": "Edit Profile"
+  },
+  "user": {
+    "title": "Users",
+    "addUser": "Add User",
+    "fullName": "Full Name",
+    "email": "Email",
+    "role": "Role",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "roles": {
+      "admin": "Admin",
+      "doctor": "Doctor",
+      "assistant_doctor": "Assistant Doctor",
+      "receptionist": "Receptionist",
+      "assistant": "Assistant"
+    }
+  },
+  "chamber": {
+    "title": "Chambers",
+    "addChamber": "Add Chamber",
+    "name": "Chamber Name",
+    "address": "Address",
+    "phone": "Phone"
+  },
+  "patient": {
+    "title": "Patients", "register": "Register Patient",
+    "name": "Full Name", "phone": "Phone Number", "gender": "Gender",
+    "male": "Male", "female": "Female", "other": "Other",
+    "dob": "Date of Birth", "address": "Address", "age": "Age",
+    "patientId": "Patient ID", "allergies": "Allergies", "chronicDiseases": "Chronic Diseases"
+  },
+  "appointment": {
+    "title": "Appointments", "book": "Book Appointment",
+    "queue": "Live Queue", "token": "Token No", "type": "Type",
+    "new": "New", "followUp": "Follow-up", "walkIn": "Walk-in"
+  },
+  "consultation": { "title": "Consultation", "vitals": "Vitals", "diagnosis": "Diagnosis", "prescription": "Prescription" },
+  "billing": { "title": "Billing", "invoice": "Invoice", "payment": "Payment", "cash": "Cash", "bkash": "bKash", "nagad": "Nagad" },
+  "status": { "scheduled": "Scheduled", "confirmed": "Confirmed", "inQueue": "In Queue", "inProgress": "In Progress", "completed": "Completed", "cancelled": "Cancelled" }
+}

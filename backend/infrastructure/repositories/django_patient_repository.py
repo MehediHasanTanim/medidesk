@@ -1,0 +1,49 @@
+from typing import List, Optional
+from uuid import UUID
+
+from django.db.models import Q
+
+from domain.entities.patient import Patient
+from domain.repositories.i_patient_repository import IPatientRepository
+from domain.value_objects.phone_number import PhoneNumber
+from infrastructure.orm.mappers.patient_mapper import PatientMapper
+from infrastructure.orm.models.patient_model import PatientModel
+
+
+class DjangoPatientRepository(IPatientRepository):
+
+    def get_by_id(self, patient_id: UUID) -> Optional[Patient]:
+        try:
+            return PatientMapper.to_domain(PatientModel.objects.get(id=patient_id))
+        except PatientModel.DoesNotExist:
+            return None
+
+    def get_by_phone(self, phone: PhoneNumber) -> Optional[Patient]:
+        try:
+            return PatientMapper.to_domain(PatientModel.objects.get(phone=str(phone)))
+        except PatientModel.DoesNotExist:
+            return None
+
+    def get_by_patient_code(self, code: str) -> Optional[Patient]:
+        try:
+            return PatientMapper.to_domain(PatientModel.objects.get(patient_id=code))
+        except PatientModel.DoesNotExist:
+            return None
+
+    def save(self, patient: Patient) -> Patient:
+        model, _ = PatientModel.objects.update_or_create(
+            id=patient.id,
+            defaults=PatientMapper.to_model_data(patient),
+        )
+        return PatientMapper.to_domain(model)
+
+    def search(self, query: str, limit: int = 20, offset: int = 0) -> List[Patient]:
+        qs = PatientModel.objects.filter(
+            Q(full_name__icontains=query) | Q(phone__icontains=query) | Q(patient_id__icontains=query),
+            is_active=True,
+        ).order_by("full_name")[offset : offset + limit]
+        return [PatientMapper.to_domain(m) for m in qs]
+
+    def list_all(self, limit: int = 50, offset: int = 0) -> List[Patient]:
+        qs = PatientModel.objects.filter(is_active=True).order_by("-created_at")[offset : offset + limit]
+        return [PatientMapper.to_domain(m) for m in qs]

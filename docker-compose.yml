@@ -1,0 +1,101 @@
+# Development — docker compose up
+# Production  — docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DB_NAME:-medidesk_dev}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-medidesk_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Django Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      target: development
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DB_HOST: db
+      DB_PORT: "5432"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./backend:/app          # live code reload
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    ports:
+      - "8005:8005"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery Worker ────────────────────────────────────────────────────────────
+  celery:
+    build:
+      context: ./backend
+      target: development
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DB_HOST: db
+      DB_PORT: "5432"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── React Frontend (Vite dev server) ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8005
+    volumes:
+      - ./frontend/src:/app/src           # hot reload source
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+    ports:
+      - "5175:5175"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  static_files:
+  media_files:

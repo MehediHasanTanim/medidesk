@@ -1,0 +1,55 @@
+{
+  "app": { "name": "মেডিডেস্ক", "tagline": "ক্লিনিক ম্যানেজমেন্ট সিস্টেম" },
+  "auth": {
+    "login": "সাইন ইন",
+    "logout": "সাইন আউট",
+    "username": "ব্যবহারকারীর নাম",
+    "password": "পাসওয়ার্ড",
+    "changePassword": "পাসওয়ার্ড পরিবর্তন",
+    "oldPassword": "বর্তমান পাসওয়ার্ড",
+    "newPassword": "নতুন পাসওয়ার্ড",
+    "confirmPassword": "নতুন পাসওয়ার্ড নিশ্চিত করুন",
+    "profile": "আমার প্রোফাইল",
+    "editProfile": "প্রোফাইল সম্পাদনা"
+  },
+  "user": {
+    "title": "ব্যবহারকারী",
+    "addUser": "ব্যবহারকারী যোগ করুন",
+    "fullName": "পুরো নাম",
+    "email": "ইমেইল",
+    "role": "ভূমিকা",
+    "status": "অবস্থা",
+    "active": "সক্রিয়",
+    "inactive": "নিষ্ক্রিয়",
+    "deactivate": "নিষ্ক্রিয় করুন",
+    "roles": {
+      "admin": "অ্যাডমিন",
+      "doctor": "ডাক্তার",
+      "assistant_doctor": "সহকারী ডাক্তার",
+      "receptionist": "রিসেপশনিস্ট",
+      "assistant": "সহকারী"
+    }
+  },
+  "chamber": {
+    "title": "চেম্বার",
+    "addChamber": "চেম্বার যোগ করুন",
+    "name": "চেম্বারের নাম",
+    "address": "ঠিকানা",
+    "phone": "ফোন"
+  },
+  "patient": {
+    "title": "রোগী", "register": "রোগী নিবন্ধন",
+    "name": "পুরো নাম", "phone": "ফোন নম্বর", "gender": "লিঙ্গ",
+    "male": "পুরুষ", "female": "মহিলা", "other": "অন্যান্য",
+    "dob": "জন্ম তারিখ", "address": "ঠিকানা", "age": "বয়স",
+    "patientId": "রোগীর আইডি", "allergies": "অ্যালার্জি", "chronicDiseases": "দীর্ঘস্থায়ী রোগ"
+  },
+  "appointment": {
+    "title": "অ্যাপয়েন্টমেন্ট", "book": "অ্যাপয়েন্টমেন্ট বুক",
+    "queue": "লাইভ কিউ", "token": "টোকেন নং", "type": "ধরন",
+    "new": "নতুন", "followUp": "ফলো-আপ", "walkIn": "ওয়াক-ইন"
+  },
+  "consultation": { "title": "পরামর্শ", "vitals": "ভাইটালস", "diagnosis": "রোগ নির্ণয়", "prescription": "প্রেসক্রিপশন" },
+  "billing": { "title": "বিলিং", "invoice": "ইনভয়েস", "payment": "পেমেন্ট", "cash": "নগদ", "bkash": "বিকাশ", "nagad": "নগদ" },
+  "status": { "scheduled": "নির্ধারিত", "confirmed": "নিশ্চিত", "inQueue": "কিউতে", "inProgress": "চলমান", "completed": "সম্পন্ন", "cancelled": "বাতিল" }
+}
