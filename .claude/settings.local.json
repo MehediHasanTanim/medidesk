@@ -52,7 +52,12 @@
       "Bash(.venv/bin/python create_user.py --username admin_user --full-name \"Admin User\" --role admin --password Admin1234! --email admin_user@medidesk.com)",
       "Bash(.venv/bin/python create_user.py --username dr_rahman --full-name \"Dr. Rahman\" --role doctor --password Doctor1234! --email dr.rahman@medidesk.com)",
       "Bash(.venv/bin/python create_user.py --username dr_karim --full-name \"Dr. Karim\" --role assistant_doctor --password AsstDoc1234! --email dr.karim@medidesk.com)",
-      "Bash(.venv/bin/python create_user.py --username fatima_reception --full-name \"Fatima Begum\" --role receptionist --password Recept1234! --email fatima@medidesk.com)"
+      "Bash(.venv/bin/python create_user.py --username fatima_reception --full-name \"Fatima Begum\" --role receptionist --password Recept1234! --email fatima@medidesk.com)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.development .venv/bin/python manage.py spectacular --validate --fail-on-warn)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.development .venv/bin/python manage.py spectacular --validate)",
+      "Bash(open -a Docker)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8005/api/docs/)",
+      "Bash(curl -s http://127.0.0.1:8005/api/docs/)"
     ]
   }
 }

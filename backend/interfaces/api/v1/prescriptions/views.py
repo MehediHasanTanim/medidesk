@@ -1,5 +1,6 @@
 import uuid
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -13,6 +14,7 @@ from interfaces.api.v1.prescriptions.serializers import CreatePrescriptionSerial
 from interfaces.permissions import RolePermission
 
 
+@extend_schema(tags=["prescriptions"])
 class PrescriptionView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
 
@@ -51,6 +53,7 @@ class PrescriptionView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["prescriptions"])
 class PrescriptionByConsultationView(APIView):
     permission_classes = [IsAuthenticated]
 

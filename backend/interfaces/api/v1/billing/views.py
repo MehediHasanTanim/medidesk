@@ -1,5 +1,6 @@
 import uuid
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -14,6 +15,7 @@ from interfaces.api.v1.billing.serializers import CreateInvoiceSerializer, Recor
 from interfaces.permissions import RolePermission
 
 
+@extend_schema(tags=["billing"])
 class InvoiceView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["receptionist", "admin", "doctor"])]
 
@@ -47,6 +49,7 @@ class InvoiceView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["billing"])
 class PaymentView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["receptionist", "admin"])]
 
@@ -71,6 +74,7 @@ class PaymentView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["billing"])
 class InvoiceDetailView(APIView):
     permission_classes = [IsAuthenticated]
 

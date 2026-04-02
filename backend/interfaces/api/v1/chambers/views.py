@@ -1,5 +1,6 @@
 import uuid
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -13,6 +14,7 @@ from interfaces.api.v1.chambers.serializers import CreateChamberSerializer, Upda
 from interfaces.permissions import AdminOnly
 
 
+@extend_schema(tags=["chambers"])
 class ChamberListView(APIView):
     """GET  /chambers/ — list chambers (all authenticated users)
        POST /chambers/ — create chamber (admin only)"""
@@ -21,6 +23,8 @@ class ChamberListView(APIView):
         if self.request.method == "POST":
             return [IsAuthenticated(), AdminOnly()]
         return [IsAuthenticated()]
+
+
 
     def get(self, request: Request) -> Response:
         active_only = request.query_params.get("active_only", "true") != "false"
@@ -55,6 +59,7 @@ class ChamberListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["chambers"])
 class ChamberDetailView(APIView):
     """GET   /chambers/<id>/ — get chamber
        PATCH /chambers/<id>/ — update chamber (admin only)"""

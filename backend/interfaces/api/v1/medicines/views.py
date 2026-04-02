@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -6,6 +7,7 @@ from rest_framework.views import APIView
 from infrastructure.repositories.django_medicine_repository import DjangoMedicineRepository
 
 
+@extend_schema(tags=["medicines"])
 class MedicineSearchView(APIView):
     permission_classes = [IsAuthenticated]
 

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -8,11 +9,13 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from interfaces.api.v1.auth.serializers import CustomTokenObtainPairSerializer
 
 
+@extend_schema(tags=["auth"])
 class CustomTokenObtainPairView(TokenObtainPairView):
     """JWT login — returns access/refresh tokens plus user info in the body."""
     serializer_class = CustomTokenObtainPairSerializer
 
 
+@extend_schema(tags=["auth"])
 class MeView(APIView):
     """Returns the currently authenticated user's profile."""
     permission_classes = [IsAuthenticated]
@@ -47,6 +50,7 @@ class MeView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["auth"])
 class ChangePasswordView(APIView):
     """Allows authenticated users to change their own password."""
     permission_classes = [IsAuthenticated]

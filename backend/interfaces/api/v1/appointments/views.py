@@ -1,6 +1,7 @@
 import uuid
 from datetime import date
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -17,6 +18,7 @@ from interfaces.api.v1.appointments.serializers import (
 from interfaces.permissions import RolePermission
 
 
+@extend_schema(tags=["appointments"])
 class BookAppointmentView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist", "assistant"])]
 
@@ -41,6 +43,7 @@ class BookAppointmentView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["appointments"])
 class QueueView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -60,6 +63,7 @@ class QueueView(APIView):
         })
 
 
+@extend_schema(tags=["appointments"])
 class AppointmentStatusView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist"])]
 

@@ -1,5 +1,6 @@
 import uuid
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -15,6 +16,7 @@ from interfaces.api.v1.users.serializers import CreateUserSerializer, UpdateUser
 from interfaces.permissions import AdminOnly
 
 
+@extend_schema(tags=["users"])
 class UserListView(APIView):
     """GET  /users/  — list all users (admin only)
        POST /users/  — create a new user (admin only)"""
@@ -65,6 +67,7 @@ class UserListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["users"])
 class UserDetailView(APIView):
     """GET   /users/<id>/ — get user
        PATCH /users/<id>/ — update user (admin only)

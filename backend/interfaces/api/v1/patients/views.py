@@ -1,5 +1,6 @@
 import uuid
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -12,6 +13,7 @@ from interfaces.api.v1.patients.serializers import PatientResponseSerializer, Re
 from interfaces.permissions import RolePermission
 
 
+@extend_schema(tags=["patients"])
 class PatientRegistrationView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist", "assistant"])]
 
@@ -31,6 +33,7 @@ class PatientRegistrationView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
 
 
+@extend_schema(tags=["patients"])
 class PatientSearchView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -49,6 +52,7 @@ class PatientSearchView(APIView):
         })
 
 
+@extend_schema(tags=["patients"])
 class PatientDetailView(APIView):
     permission_classes = [IsAuthenticated]
 

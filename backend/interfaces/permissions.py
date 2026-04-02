@@ -20,19 +20,27 @@ class AdminOnly(BasePermission):
         )
 
 
-class RolePermission(BasePermission):
+def RolePermission(allowed_roles: List[str]) -> type:
     """
-    Grants access to users whose role is in allowed_roles.
+    Factory that returns a permission *class* (not an instance) so it can be
+    used directly inside `permission_classes` lists, which DRF (and
+    drf-spectacular) expect to contain un-instantiated classes.
+
     Admin and Super Admin users always pass — they have unrestricted access.
+
+    Usage:
+        permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist"])]
     """
+    class _RolePermission(BasePermission):
+        _allowed_roles = allowed_roles
 
-    def __init__(self, allowed_roles: List[str]) -> None:
-        self.allowed_roles = allowed_roles
+        def has_permission(self, request: Request, view: APIView) -> bool:
+            if not (request.user and request.user.is_authenticated and hasattr(request.user, "role")):
+                return False
+            if request.user.role in ADMIN_ROLES:
+                return True
+            return request.user.role in self._allowed_roles
 
-    def has_permission(self, request: Request, view: APIView) -> bool:
-        if not (request.user and request.user.is_authenticated and hasattr(request.user, "role")):
-            return False
-        # Super Admin and Admin bypass all role restrictions
-        if request.user.role in ADMIN_ROLES:
-            return True
-        return request.user.role in self.allowed_roles
+    _RolePermission.__name__ = f"RolePermission{allowed_roles}"
+    _RolePermission.__qualname__ = f"RolePermission{allowed_roles}"
+    return _RolePermission

@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "drf_spectacular",
     # Local — infrastructure is the only Django app (all ORM models live here)
     "infrastructure",
 ]
@@ -88,6 +89,48 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# ── drf-spectacular (OpenAPI 3 / Swagger) ─────────────────────────────────────
+SPECTACULAR_SETTINGS = {
+    "TITLE": "MediDesk API",
+    "DESCRIPTION": (
+        "REST API for MediDesk — a clinic management system for Bangladesh private consultancy practices.\n\n"
+        "## Authentication\n"
+        "All protected endpoints require a JWT Bearer token.\n"
+        "Obtain a token via `POST /api/v1/auth/login/`, then pass it as:\n"
+        "```\nAuthorization: Bearer <access_token>\n```\n\n"
+        "## Roles\n"
+        "| Role | Description |\n"
+        "|---|---|\n"
+        "| `super_admin` | Full access, Django superuser |\n"
+        "| `admin` | Full access, manage staff & chambers |\n"
+        "| `doctor` | Prescriptions, consultations, patients |\n"
+        "| `assistant_doctor` | Prescriptions (require approval), consultations |\n"
+        "| `receptionist` | Appointments, billing, patient registration |\n"
+        "| `assistant` | Read-only patient & appointment access |"
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SWAGGER_UI_SETTINGS": {
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+    },
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": False,
+    "TAGS": [
+        {"name": "auth",          "description": "Login, refresh, logout, profile"},
+        {"name": "users",         "description": "Staff account management (admin+)"},
+        {"name": "chambers",      "description": "Clinic branches and consultation rooms"},
+        {"name": "patients",      "description": "Patient registration and search"},
+        {"name": "appointments",  "description": "Appointment booking and live queue"},
+        {"name": "consultations", "description": "Consultation lifecycle"},
+        {"name": "prescriptions", "description": "Prescription management"},
+        {"name": "billing",       "description": "Invoices and payment recording"},
+        {"name": "medicines",     "description": "Medicine catalogue search"},
+    ],
 }
 
 # ── JWT ────────────────────────────────────────────────────────────────────────
