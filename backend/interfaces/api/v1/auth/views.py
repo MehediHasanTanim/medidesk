@@ -1,4 +1,4 @@
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -6,20 +6,42 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from interfaces.api.v1.auth.serializers import CustomTokenObtainPairSerializer
+from interfaces.api.v1.auth.serializers import (
+    ChangePasswordSerializer,
+    CustomTokenObtainPairSerializer,
+    LoginRequestSerializer,
+    LoginResponseSerializer,
+    MeSerializer,
+    MeUpdateSerializer,
+    MessageSerializer,
+)
 
 
-@extend_schema(tags=["auth"])
+@extend_schema(
+    tags=["auth"],
+    summary="Login",
+    description="Authenticate with username and password. Returns JWT access/refresh tokens and full user info.",
+    request=LoginRequestSerializer,
+    responses={
+        200: LoginResponseSerializer,
+        401: OpenApiResponse(description="Invalid credentials"),
+    },
+)
 class CustomTokenObtainPairView(TokenObtainPairView):
     """JWT login — returns access/refresh tokens plus user info in the body."""
     serializer_class = CustomTokenObtainPairSerializer
 
 
-@extend_schema(tags=["auth"])
 class MeView(APIView):
-    """Returns the currently authenticated user's profile."""
+    """Current user profile — get or update."""
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["auth"],
+        summary="Get my profile",
+        description="Returns the profile of the currently authenticated user.",
+        responses={200: MeSerializer},
+    )
     def get(self, request: Request) -> Response:
         user = request.user
         return Response({
@@ -32,8 +54,17 @@ class MeView(APIView):
             "is_active": user.is_active,
         })
 
+    @extend_schema(
+        tags=["auth"],
+        summary="Update my profile",
+        description="Update your own `full_name` and/or `email`. Role and username cannot be changed here.",
+        request=MeUpdateSerializer,
+        responses={
+            200: MeSerializer,
+            400: OpenApiResponse(description="Nothing to update / validation error"),
+        },
+    )
     def patch(self, request: Request) -> Response:
-        """Update own profile (full_name, email only)."""
         from application.dtos.user_dto import UpdateUserDTO
         from application.use_cases.user.update_user import UpdateUserUseCase
         from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
@@ -50,11 +81,20 @@ class MeView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(tags=["auth"])
 class ChangePasswordView(APIView):
-    """Allows authenticated users to change their own password."""
+    """Change the authenticated user's password."""
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["auth"],
+        summary="Change password",
+        description="Verify the current password and set a new one.",
+        request=ChangePasswordSerializer,
+        responses={
+            200: MessageSerializer,
+            400: OpenApiResponse(description="Wrong old password or missing fields"),
+        },
+    )
     def post(self, request: Request) -> Response:
         from application.dtos.user_dto import ChangePasswordDTO
         from application.use_cases.user.change_password import ChangePasswordUseCase

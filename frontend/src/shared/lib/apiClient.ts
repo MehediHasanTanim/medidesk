@@ -29,6 +29,8 @@ apiClient.interceptors.response.use(
         try {
           const { data } = await axios.post("/api/v1/auth/refresh/", { refresh });
           localStorage.setItem("access_token", data.access);
+          // Save the rotated refresh token — backend blacklists the old one immediately
+          if (data.refresh) localStorage.setItem("refresh_token", data.refresh);
           originalRequest.headers.Authorization = `Bearer ${data.access}`;
           return apiClient(originalRequest);
         } catch {

@@ -1,7 +1,31 @@
 from django.urls import path
+from drf_spectacular.utils import extend_schema
 from rest_framework_simplejwt.views import TokenRefreshView, TokenBlacklistView
 
 from interfaces.api.v1.auth.views import CustomTokenObtainPairView, MeView, ChangePasswordView
+from interfaces.api.v1.auth.serializers import (
+    TokenRefreshRequestSerializer,
+    TokenRefreshResponseSerializer,
+    TokenBlacklistRequestSerializer,
+    MessageSerializer,
+)
+
+# Tag simplejwt built-in views under the "auth" group with proper schemas
+TokenRefreshView = extend_schema(
+    tags=["auth"],
+    summary="Refresh access token",
+    description="Exchange a valid refresh token for a new access + rotated refresh token.",
+    request=TokenRefreshRequestSerializer,
+    responses={200: TokenRefreshResponseSerializer},
+)(TokenRefreshView)
+
+TokenBlacklistView = extend_schema(
+    tags=["auth"],
+    summary="Logout",
+    description="Blacklist the refresh token, effectively logging the user out.",
+    request=TokenBlacklistRequestSerializer,
+    responses={200: MessageSerializer},
+)(TokenBlacklistView)
 from interfaces.api.v1.patients.views import PatientRegistrationView, PatientDetailView, PatientSearchView
 from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, AppointmentStatusView
 from interfaces.api.v1.consultations.views import StartConsultationView, CompleteConsultationView
