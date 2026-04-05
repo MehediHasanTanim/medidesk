@@ -1,6 +1,6 @@
 import uuid
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -16,12 +16,41 @@ from interfaces.api.v1.users.serializers import CreateUserSerializer, UpdateUser
 from interfaces.permissions import AdminOnly
 
 
-@extend_schema(tags=["users"])
+@extend_schema(
+    tags=["users"],
+    summary="List doctors",
+    description="Returns active doctors and assistant doctors. Accessible to all authenticated users (used for appointment booking dropdowns).",
+)
+class DoctorsListView(APIView):
+    """GET /users/doctors/ — list active doctors & assistant doctors (all authenticated)"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        from domain.entities.user import UserRole
+        from infrastructure.repositories.django_user_repository import DjangoUserRepository
+        repo = DjangoUserRepository()
+        doctors = repo.list_by_role(UserRole.DOCTOR) + repo.list_by_role(UserRole.ASSISTANT_DOCTOR)
+        doctors.sort(key=lambda u: u.full_name)
+        return Response([
+            {
+                "id": str(u.id),
+                "full_name": u.full_name,
+                "role": u.role.value,
+            }
+            for u in doctors
+        ])
+
+
 class UserListView(APIView):
     """GET  /users/  — list all users (admin only)
        POST /users/  — create a new user (admin only)"""
     permission_classes = [IsAuthenticated, AdminOnly]
 
+    @extend_schema(
+        tags=["users"],
+        summary="List all staff users",
+        description="Returns all users, optionally filtered by is_active. Admin only.",
+    )
     def get(self, request: Request) -> Response:
         is_active = request.query_params.get("is_active")
         filter_active = None
@@ -46,6 +75,13 @@ class UserListView(APIView):
             for u in users
         ])
 
+    @extend_schema(
+        tags=["users"],
+        summary="Create a new staff user",
+        description="Creates a new user with the given role and optionally assigns chambers. Admin only.",
+        request=CreateUserSerializer,
+        responses={201: CreateUserSerializer, 400: OpenApiResponse(description="Validation error or duplicate username")},
+    )
     def post(self, request: Request) -> Response:
         serializer = CreateUserSerializer(data=request.data)
         if not serializer.is_valid():
@@ -67,13 +103,13 @@ class UserListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(tags=["users"])
 class UserDetailView(APIView):
     """GET   /users/<id>/ — get user
        PATCH /users/<id>/ — update user (admin only)
        DELETE /users/<id>/ — deactivate user (admin only)"""
     permission_classes = [IsAuthenticated, AdminOnly]
 
+    @extend_schema(tags=["users"], summary="Get user by ID")
     def get(self, request: Request, user_id: uuid.UUID) -> Response:
         with DjangoUnitOfWork() as uow:
             user = uow.users.get_by_id(user_id)
@@ -90,8 +126,15 @@ class UserDetailView(APIView):
             "is_active": user.is_active,
         })
 
+    @extend_schema(
+        tags=["users"],
+        summary="Update user",
+        description="Update name, email, role, is_active, or chamber assignments. All fields optional. Admin only.",
+        request=UpdateUserSerializer,
+        responses={200: UpdateUserSerializer, 400: OpenApiResponse(description="Validation error"), 404: OpenApiResponse(description="User not found")},
+    )
     def patch(self, request: Request, user_id: uuid.UUID) -> Response:
-        serializer = UpdateUserSerializer(data=request.data)
+        serializer = UpdateUserSerializer(data=request.data, partial=True)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -101,6 +144,7 @@ class UserDetailView(APIView):
             full_name=data.get("full_name"),
             email=data.get("email"),
             role=data.get("role"),
+            is_active=data.get("is_active"),
             chamber_ids=[str(c) for c in data["chamber_ids"]] if "chamber_ids" in data else None,
         )
         try:
@@ -109,6 +153,7 @@ class UserDetailView(APIView):
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(tags=["users"], summary="Deactivate user", responses={204: None, 404: OpenApiResponse(description="User not found")})
     def delete(self, request: Request, user_id: uuid.UUID) -> Response:
         try:
             DeactivateUserUseCase(uow=DjangoUnitOfWork()).execute(str(user_id))

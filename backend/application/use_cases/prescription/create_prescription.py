@@ -34,13 +34,16 @@ class CreatePrescriptionUseCase:
             for item in dto.items
         ]
 
+        requires_approval = dto.prescribed_by_role == "assistant_doctor"
+        initial_status = PrescriptionStatus.DRAFT if requires_approval else PrescriptionStatus.ACTIVE
+
         prescription = Prescription(
             id=uuid.uuid4(),
             consultation_id=uuid.UUID(dto.consultation_id),
             patient_id=uuid.UUID(dto.patient_id),
             prescribed_by_id=uuid.UUID(dto.prescribed_by_id),
             items=items,
-            status=PrescriptionStatus.ACTIVE,
+            status=initial_status,
             follow_up_date=follow_up,
         )
 

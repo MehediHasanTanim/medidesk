@@ -10,6 +10,9 @@ import AppointmentsPage from "@/features/appointments/pages/AppointmentsPage";
 import QueuePage from "@/features/appointments/pages/QueuePage";
 import UsersPage from "@/features/users/pages/UsersPage";
 import ChambersPage from "@/features/chambers/pages/ChambersPage";
+import BillingPage from "@/features/billing/pages/BillingPage";
+import PatientHistoryPage from "@/features/patients/pages/PatientHistoryPage";
+import PrescriptionsPage from "@/features/prescriptions/pages/PrescriptionsPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -26,9 +29,70 @@ export default function App() {
         {/* Private — all authenticated users */}
         <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-        <Route path="/patients" element={<PrivateRoute><PatientsPage /></PrivateRoute>} />
-        <Route path="/appointments" element={<PrivateRoute><AppointmentsPage /></PrivateRoute>} />
-        <Route path="/queue" element={<PrivateRoute><QueuePage /></PrivateRoute>} />
+        {/* Clinical & front-desk — doctors, assistant doctors, receptionists, assistants (clerical) */}
+        <Route
+          path="/patients"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant"]}>
+                <PatientsPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/patients/:patientId/history"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor", "assistant_doctor"]}>
+                <PatientHistoryPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant"]}>
+                <AppointmentsPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/queue"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant"]}>
+                <QueuePage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+        {/* Billing — receptionist & assistant handle invoices; doctors view only */}
+        <Route
+          path="/billing"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["receptionist", "assistant"]}>
+                <BillingPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+
+        {/* Doctor-only */}
+        <Route
+          path="/prescriptions"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor"]}>
+                <PrescriptionsPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
 
         {/* Admin-only */}
         <Route

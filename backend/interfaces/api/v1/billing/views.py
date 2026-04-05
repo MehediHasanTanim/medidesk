@@ -17,7 +17,33 @@ from interfaces.permissions import RolePermission
 
 @extend_schema(tags=["billing"])
 class InvoiceView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "admin", "doctor"])]
+    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "admin"])]
+
+    def get(self, request: Request) -> Response:
+        patient_id_str = request.query_params.get("patient_id")
+        if not patient_id_str:
+            return Response({"error": "patient_id query param is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            patient_id = uuid.UUID(patient_id_str)
+        except ValueError:
+            return Response({"error": "Invalid patient_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        from infrastructure.repositories.django_billing_repository import DjangoBillingRepository
+        invoices = DjangoBillingRepository().get_invoices_by_patient(patient_id)
+        return Response([
+            {
+                "invoice_id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "patient_id": str(inv.patient_id),
+                "status": inv.status.value,
+                "subtotal": str(inv.subtotal.amount),
+                "discount_percent": str(inv.discount_percent),
+                "total_due": str(inv.total_due.amount),
+                "created_at": inv.created_at.isoformat() if inv.created_at else None,
+                "item_count": len(inv.items),
+            }
+            for inv in invoices
+        ])
 
     def post(self, request: Request) -> Response:
         serializer = CreateInvoiceSerializer(data=request.data)

@@ -19,5 +19,6 @@ class CreatePrescriptionDTO:
     consultation_id: str
     patient_id: str
     prescribed_by_id: str
+    prescribed_by_role: str = "doctor"  # used to determine if approval is required
     items: List[PrescriptionItemDTO] = field(default_factory=list)
     follow_up_date: Optional[str] = None  # ISO date string "YYYY-MM-DD"

@@ -40,10 +40,22 @@ class Appointment:
             raise ValueError("Only scheduled appointments can be confirmed")
         self.status = AppointmentStatus.CONFIRMED
 
+    def check_in(self, token_number: int) -> None:
+        """Patient has arrived — assign token and move to in-queue."""
+        if self.status not in (AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED):
+            raise ValueError(f"Cannot check in a {self.status.value} appointment")
+        self.token_number = token_number
+        self.status = AppointmentStatus.IN_QUEUE
+
     def cancel(self) -> None:
         if self.status in (AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED):
             raise ValueError(f"Cannot cancel a {self.status.value} appointment")
         self.status = AppointmentStatus.CANCELLED
+
+    def mark_no_show(self) -> None:
+        if self.status in (AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED):
+            raise ValueError(f"Cannot mark {self.status.value} appointment as no-show")
+        self.status = AppointmentStatus.NO_SHOW
 
     def mark_in_progress(self) -> None:
         self.status = AppointmentStatus.IN_PROGRESS

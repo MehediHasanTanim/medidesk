@@ -1,0 +1,84 @@
+import apiClient from "@/shared/lib/apiClient";
+
+export type InvoiceStatus = "draft" | "issued" | "paid" | "partially_paid" | "cancelled";
+export type PaymentMethod = "cash" | "bkash" | "nagad" | "card";
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: "Cash",
+  bkash: "bKash",
+  nagad: "Nagad",
+  card: "Card",
+};
+
+export const INVOICE_STATUS_COLORS: Record<InvoiceStatus, string> = {
+  draft: "#6b7280",
+  issued: "#1a56db",
+  paid: "#059669",
+  partially_paid: "#d97706",
+  cancelled: "#dc2626",
+};
+
+export interface InvoiceItem {
+  description: string;
+  quantity: number;
+  unit_price: string;
+  total?: string;
+}
+
+export interface InvoiceSummary {
+  invoice_id: string;
+  invoice_number: string;
+  patient_id: string;
+  status: InvoiceStatus;
+  subtotal: string;
+  discount_percent: string;
+  total_due: string;
+  created_at: string | null;
+  item_count: number;
+}
+
+export interface InvoiceDetail extends InvoiceSummary {
+  consultation_id: string | null;
+  items: InvoiceItem[];
+  payments: Payment[];
+}
+
+export interface Payment {
+  payment_id: string;
+  amount: string;
+  method: PaymentMethod;
+  transaction_ref: string;
+  paid_at: string | null;
+}
+
+export interface CreateInvoicePayload {
+  patient_id: string;
+  consultation_id?: string;
+  items: Array<{ description: string; quantity: number; unit_price: number }>;
+  discount_percent?: number;
+}
+
+export interface RecordPaymentPayload {
+  invoice_id: string;
+  amount: number;
+  method: PaymentMethod;
+  transaction_ref?: string;
+}
+
+export const billingApi = {
+  listByPatient: (patientId: string) =>
+    apiClient
+      .get<InvoiceSummary[]>("/invoices/", { params: { patient_id: patientId } })
+      .then((r) => r.data),
+
+  getInvoice: (invoiceId: string) =>
+    apiClient.get<InvoiceDetail>(`/invoices/${invoiceId}/`).then((r) => r.data),
+
+  createInvoice: (payload: CreateInvoicePayload) =>
+    apiClient.post<{ invoice_id: string; invoice_number: string; status: string; total_due: string }>(
+      "/invoices/", payload
+    ).then((r) => r.data),
+
+  recordPayment: (payload: RecordPaymentPayload) =>
+    apiClient.post("/payments/", payload).then((r) => r.data),
+};

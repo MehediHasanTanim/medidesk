@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 class BookAppointmentSerializer(serializers.Serializer):
     patient_id = serializers.UUIDField()
+    doctor_id = serializers.UUIDField(required=False, allow_null=True, help_text="Required when booked by receptionist/assistant. Doctors default to themselves.")
     scheduled_at = serializers.DateTimeField()
     appointment_type = serializers.ChoiceField(choices=["new", "follow_up", "walk_in"])
     chamber_id = serializers.UUIDField(required=False, allow_null=True)

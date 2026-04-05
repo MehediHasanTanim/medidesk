@@ -19,6 +19,7 @@ class UpdateUserDTO:
     full_name: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    is_active: Optional[bool] = None
     chamber_ids: Optional[List[str]] = None
 
 

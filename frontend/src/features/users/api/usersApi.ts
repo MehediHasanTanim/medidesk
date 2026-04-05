@@ -14,10 +14,20 @@ export interface UpdateUserPayload {
   full_name?: string;
   email?: string;
   role?: string;
+  is_active?: boolean;
   chamber_ids?: string[];
 }
 
+export interface DoctorOption {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
 export const usersApi = {
+  doctors: () =>
+    apiClient.get<DoctorOption[]>("/users/doctors/").then((r) => r.data),
+
   list: (isActive?: boolean) =>
     apiClient
       .get<UserRecord[]>("/users/", { params: isActive !== undefined ? { is_active: isActive } : {} })

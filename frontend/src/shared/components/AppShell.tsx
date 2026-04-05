@@ -16,6 +16,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/patients",     label: "Patients",     icon: "👤", roles: ["doctor", "assistant_doctor", "receptionist", "assistant"] },
   { path: "/appointments", label: "Appointments", icon: "📅", roles: ["doctor", "assistant_doctor", "receptionist", "assistant"] },
   { path: "/queue",        label: "Live Queue",   icon: "🔢", roles: ["doctor", "assistant_doctor", "receptionist", "assistant"] },
+  { path: "/billing",      label: "Billing",      icon: "💳", roles: ["receptionist", "assistant"] },
+  { path: "/prescriptions", label: "Rx Approvals", icon: "💊", roles: ["doctor"] },
   { path: "/users",        label: "Users",        icon: "👥", roles: ["super_admin", "admin"] },
   { path: "/chambers",     label: "Chambers",     icon: "🏥", roles: ["super_admin", "admin"] },
 ];
@@ -30,12 +32,14 @@ export default function AppShell({ children }: Props) {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    import("@/shared/lib/apiClient").then(({ default: api }) => {
-      const refresh = localStorage.getItem("refresh_token");
-      if (refresh) api.post("/auth/logout/", { refresh }).catch(() => {});
-    });
+    const refresh = localStorage.getItem("refresh_token");
     logout();
     navigate("/login", { replace: true });
+    if (refresh) {
+      import("@/shared/lib/apiClient").then(({ default: api }) => {
+        api.post("/auth/logout/", { refresh }).catch(() => {});
+      });
+    }
   };
 
   const visibleItems = NAV_ITEMS.filter(

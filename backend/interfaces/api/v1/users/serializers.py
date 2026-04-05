@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-ROLE_CHOICES = ["admin", "doctor", "assistant_doctor", "receptionist", "assistant"]
+ROLE_CHOICES = ["super_admin", "admin", "doctor", "assistant_doctor", "receptionist", "assistant"]
 
 
 class CreateUserSerializer(serializers.Serializer):
@@ -18,6 +18,7 @@ class UpdateUserSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255, required=False)
     email = serializers.EmailField(required=False)
     role = serializers.ChoiceField(choices=ROLE_CHOICES, required=False)
+    is_active = serializers.BooleanField(required=False)
     chamber_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False
     )

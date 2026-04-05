@@ -59,6 +59,12 @@ class DjangoBillingRepository(IBillingRepository):
         qs = PaymentModel.objects.filter(invoice_id=invoice_id)
         return [self._payment_to_domain(m) for m in qs]
 
+    def get_invoices_by_patient(self, patient_id: UUID, limit: int = 50) -> List[Invoice]:
+        qs = InvoiceModel.objects.prefetch_related("items").filter(
+            patient_id=patient_id
+        ).order_by("-created_at")[:limit]
+        return [self._invoice_to_domain(m) for m in qs]
+
     def get_invoices_by_date_range(self, start: date, end: date) -> List[Invoice]:
         qs = InvoiceModel.objects.prefetch_related("items").filter(
             created_at__date__gte=start, created_at__date__lte=end

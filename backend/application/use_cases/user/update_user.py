@@ -22,6 +22,8 @@ class UpdateUserUseCase:
                 user.email = dto.email
             if dto.role is not None:
                 user.role = UserRole(dto.role)
+            if dto.is_active is not None:
+                user.is_active = dto.is_active
 
             saved = self._uow.users.save(user)
 

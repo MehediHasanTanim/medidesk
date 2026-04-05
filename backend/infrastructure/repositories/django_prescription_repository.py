@@ -32,6 +32,15 @@ class DjangoPrescriptionRepository(IPrescriptionRepository):
         ).order_by("-created_at")[:limit]
         return [self._to_domain(m) for m in qs]
 
+    def list_pending(self, limit: int = 50) -> List[Prescription]:
+        """Return all draft prescriptions awaiting doctor approval."""
+        qs = (
+            PrescriptionModel.objects.prefetch_related("items")
+            .filter(status=PrescriptionStatus.DRAFT.value)
+            .order_by("created_at")[:limit]
+        )
+        return [self._to_domain(m) for m in qs]
+
     def save(self, prescription: Prescription) -> Prescription:
         model, _ = PrescriptionModel.objects.update_or_create(
             id=prescription.id,

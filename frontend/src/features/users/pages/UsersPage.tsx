@@ -5,6 +5,7 @@ import { usersApi, type CreateUserPayload, type UpdateUserPayload } from "@/feat
 import { chambersApi } from "@/features/chambers/api/chambersApi";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import { ROLE_LABELS, ROLE_COLORS, ALL_ROLES } from "@/shared/types/auth";
+import { useAuthStore } from "@/features/auth/store/authStore";
 import type { UserRecord, UserRole } from "@/shared/types/auth";
 
 const inputStyle = {
@@ -27,6 +28,12 @@ function RoleBadge({ role }: { role: UserRole }) {
 }
 
 function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { user: currentUser } = useAuthStore();
+  // super_admin can assign any role; admin cannot create super_admin accounts
+  const availableRoles: UserRole[] = currentUser?.role === "super_admin"
+    ? ALL_ROLES
+    : ALL_ROLES.filter((r) => r !== "super_admin");
+
   const [form, setForm] = useState<CreateUserPayload>({
     username: "", full_name: "", email: "", role: "receptionist", password: "", chamber_ids: [],
   });
@@ -68,7 +75,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Role</label>
           <select value={form.role} onChange={(e) => set("role", e.target.value)} style={inputStyle}>
-            {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            {availableRoles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
         </div>
 
@@ -110,6 +117,11 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 }
 
 function EditUserModal({ user, onClose, onSaved }: { user: UserRecord; onClose: () => void; onSaved: () => void }) {
+  const { user: currentUser } = useAuthStore();
+  const availableRoles: UserRole[] = currentUser?.role === "super_admin"
+    ? ALL_ROLES
+    : ALL_ROLES.filter((r) => r !== "super_admin");
+
   const [form, setForm] = useState<UpdateUserPayload>({
     full_name: user.full_name,
     email: user.email,
@@ -156,7 +168,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRecord; onClose: 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Role</label>
           <select value={form.role ?? ""} onChange={(e) => set("role", e.target.value)} style={inputStyle}>
-            {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            {availableRoles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
         </div>
 
@@ -205,6 +217,11 @@ export default function UsersPage() {
 
   const deactivate = useMutation({
     mutationFn: usersApi.deactivate,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+
+  const reactivate = useMutation({
+    mutationFn: (id: string) => usersApi.update(id, { is_active: true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 
@@ -283,12 +300,19 @@ export default function UsersPage() {
                         >
                           Edit
                         </button>
-                        {u.is_active && (
+                        {u.is_active ? (
                           <button
                             onClick={() => { if (confirm(`Deactivate ${u.full_name}?`)) deactivate.mutate(u.id); }}
                             style={{ padding: "4px 12px", background: "#fef2f2", color: colors.danger, border: `1px solid #fecaca`, borderRadius: radius.sm, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
                           >
                             Deactivate
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { if (confirm(`Reactivate ${u.full_name}?`)) reactivate.mutate(u.id); }}
+                            style={{ padding: "4px 12px", background: "#f0fdf4", color: colors.success, border: `1px solid #bbf7d0`, borderRadius: radius.sm, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+                          >
+                            Reactivate
                           </button>
                         )}
                       </div>

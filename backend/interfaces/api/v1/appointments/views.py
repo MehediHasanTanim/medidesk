@@ -27,9 +27,24 @@ class BookAppointmentView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # Doctors/assistant_doctors default to themselves; non-clinical roles must supply doctor_id
+        user_role = getattr(request.user, "role", None)
+        is_clinical = user_role in ("doctor", "assistant_doctor")
+        provided_doctor_id = data.get("doctor_id")
+
+        if is_clinical:
+            doctor_id = str(provided_doctor_id) if provided_doctor_id else str(request.user.id)
+        else:
+            if not provided_doctor_id:
+                return Response(
+                    {"error": "doctor_id is required when booking on behalf of a doctor"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            doctor_id = str(provided_doctor_id)
+
         dto = BookAppointmentDTO(
             patient_id=str(data["patient_id"]),
-            doctor_id=str(request.user.id),
+            doctor_id=doctor_id,
             scheduled_at=data["scheduled_at"].isoformat(),
             appointment_type=data["appointment_type"],
             chamber_id=str(data["chamber_id"]) if data.get("chamber_id") else None,
@@ -65,15 +80,75 @@ class QueueView(APIView):
 
 @extend_schema(tags=["appointments"])
 class AppointmentStatusView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist"])]
+    """Generic status transitions (confirm, cancel, no_show, in_progress, completed)."""
+    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor", "receptionist"])]
 
     def patch(self, request: Request, appointment_id: uuid.UUID) -> Response:
-        new_status = request.data.get("status")
         from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
+        from domain.entities.appointment import AppointmentStatus
+
+        new_status = request.data.get("status")
+        if not new_status:
+            return Response({"error": "status is required"}, status=status.HTTP_400_BAD_REQUEST)
+
         repo = DjangoAppointmentRepository()
         appt = repo.get_by_id(appointment_id)
         if not appt:
             return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
-        appt.status = new_status  # type: ignore[assignment]
+
+        try:
+            if new_status == AppointmentStatus.CONFIRMED:
+                appt.confirm()
+            elif new_status == AppointmentStatus.CANCELLED:
+                appt.cancel()
+            elif new_status == AppointmentStatus.NO_SHOW:
+                appt.mark_no_show()
+            elif new_status == AppointmentStatus.IN_PROGRESS:
+                appt.mark_in_progress()
+            elif new_status == AppointmentStatus.COMPLETED:
+                appt.complete()
+            else:
+                return Response(
+                    {"error": f"Use the dedicated check-in endpoint for '{new_status}' status"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         repo.save(appt)
-        return Response({"id": str(appt.id), "status": new_status})
+        return Response({"id": str(appt.id), "status": appt.status.value})
+
+
+@extend_schema(
+    tags=["appointments"],
+    summary="Check in patient",
+    description=(
+        "Mark a patient as arrived: assigns the next available queue token for the day "
+        "and sets status to 'in_queue'. Accessible to receptionist and assistant."
+    ),
+)
+class CheckInView(APIView):
+    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "doctor"])]
+
+    def post(self, request: Request, appointment_id: uuid.UUID) -> Response:
+        from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
+
+        repo = DjangoAppointmentRepository()
+        appt = repo.get_by_id(appointment_id)
+        if not appt:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        target_date = appt.scheduled_at.date()
+        next_token = repo.get_next_token(target_date, appt.chamber_id)
+
+        try:
+            appt.check_in(token_number=next_token)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        repo.save(appt)
+        return Response({
+            "id": str(appt.id),
+            "status": appt.status.value,
+            "token_number": appt.token_number,
+        }, status=status.HTTP_200_OK)

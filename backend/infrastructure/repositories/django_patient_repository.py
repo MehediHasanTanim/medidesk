@@ -47,3 +47,31 @@ class DjangoPatientRepository(IPatientRepository):
     def list_all(self, limit: int = 50, offset: int = 0) -> List[Patient]:
         qs = PatientModel.objects.filter(is_active=True).order_by("-created_at")[offset : offset + limit]
         return [PatientMapper.to_domain(m) for m in qs]
+
+    def list_by_doctor(self, doctor_id: UUID, limit: int = 50, offset: int = 0) -> List[Patient]:
+        """Return patients who have at least one appointment with the given doctor."""
+        qs = (
+            PatientModel.objects.filter(is_active=True, appointments__doctor_id=doctor_id)
+            .distinct()
+            .order_by("-created_at")[offset : offset + limit]
+        )
+        return [PatientMapper.to_domain(m) for m in qs]
+
+    def search_by_doctor(self, query: str, doctor_id: UUID, limit: int = 20, offset: int = 0) -> List[Patient]:
+        """Search patients scoped to those with appointments under the given doctor."""
+        qs = (
+            PatientModel.objects.filter(
+                Q(full_name__icontains=query) | Q(phone__icontains=query) | Q(patient_id__icontains=query),
+                is_active=True,
+                appointments__doctor_id=doctor_id,
+            )
+            .distinct()
+            .order_by("full_name")[offset : offset + limit]
+        )
+        return [PatientMapper.to_domain(m) for m in qs]
+
+    def has_appointment_with_doctor(self, patient_id: UUID, doctor_id: UUID) -> bool:
+        """Check whether a patient has any appointment with the given doctor."""
+        return PatientModel.objects.filter(
+            id=patient_id, appointments__doctor_id=doctor_id
+        ).exists()
