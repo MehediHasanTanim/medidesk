@@ -14,6 +14,16 @@ class BookAppointmentDTO:
 
 
 @dataclass
+class UpdateAppointmentDTO:
+    appointment_id: str
+    doctor_id: Optional[str] = None
+    scheduled_at: Optional[str] = None
+    appointment_type: Optional[str] = None
+    chamber_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@dataclass
 class AppointmentResponseDTO:
     id: str
     patient_id: str

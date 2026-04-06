@@ -83,6 +83,14 @@ export type AppointmentStatus =
   | "cancelled"
   | "no_show";
 
+export interface UpdateAppointmentPayload {
+  doctor_id?: string;
+  scheduled_at?: string; // ISO datetime
+  appointment_type?: "new" | "follow_up" | "walk_in";
+  chamber_id?: string | null;
+  notes?: string;
+}
+
 export const appointmentsApi = {
   /** GET /appointments/ — paginated list with optional filters */
   list: (params: ListAppointmentsParams = {}) =>
@@ -90,8 +98,18 @@ export const appointmentsApi = {
       .get<AppointmentListResponse>("/appointments/", { params })
       .then((r) => r.data),
 
+  /** GET /appointments/{id}/ — single appointment details */
+  get: (id: string) =>
+    apiClient.get<AppointmentListItem>(`/appointments/${id}/`).then((r) => r.data),
+
   book: (payload: BookAppointmentPayload) =>
     apiClient.post<AppointmentResponse>("/appointments/", payload).then((r) => r.data),
+
+  /** PATCH /appointments/{id}/ — edit fields (only when scheduled/confirmed) */
+  update: (id: string, payload: UpdateAppointmentPayload) =>
+    apiClient
+      .patch<AppointmentListItem>(`/appointments/${id}/`, payload)
+      .then((r) => r.data),
 
   getQueue: (date?: string, chamberId?: string) =>
     apiClient

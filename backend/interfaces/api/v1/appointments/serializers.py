@@ -44,6 +44,17 @@ class AppointmentListItemSerializer(serializers.Serializer):
     notes = serializers.CharField()
 
 
+class UpdateAppointmentSerializer(serializers.Serializer):
+    """All fields optional — only supplied fields are updated."""
+    doctor_id = serializers.UUIDField(required=False, allow_null=True)
+    scheduled_at = serializers.DateTimeField(required=False)
+    appointment_type = serializers.ChoiceField(
+        choices=["new", "follow_up", "walk_in"], required=False
+    )
+    chamber_id = serializers.UUIDField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
 class StatusUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(
         choices=["confirmed", "cancelled", "no_show", "in_progress", "completed"],

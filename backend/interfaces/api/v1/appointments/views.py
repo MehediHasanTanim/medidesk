@@ -17,6 +17,7 @@ from interfaces.api.v1.appointments.serializers import (
     CheckInResponseSerializer,
     QueueItemSerializer,
     StatusUpdateSerializer,
+    UpdateAppointmentSerializer,
 )
 from interfaces.permissions import RolePermission
 
@@ -263,6 +264,127 @@ class AppointmentStatusView(APIView):
 
         repo.save(appt)
         return Response({"id": str(appt.id), "status": appt.status.value})
+
+
+class AppointmentDetailView(APIView):
+    """Retrieve or edit a single appointment's fields (not status)."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["appointments"],
+        summary="Get appointment",
+        description="Retrieve full details of a single appointment.",
+        responses={200: AppointmentListItemSerializer},
+    )
+    def get(self, request: Request, appointment_id: uuid.UUID) -> Response:
+        from infrastructure.orm.models.appointment_model import AppointmentModel
+
+        try:
+            m = AppointmentModel.objects.select_related("patient", "doctor").get(
+                id=appointment_id
+            )
+        except AppointmentModel.DoesNotExist:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        data = {
+            "id": str(m.id),
+            "patient_id": str(m.patient_id),
+            "patient_name": m.patient.full_name,
+            "patient_phone": str(m.patient.phone),
+            "doctor_id": str(m.doctor_id),
+            "doctor_name": m.doctor.full_name,
+            "chamber_id": str(m.chamber_id) if m.chamber_id else None,
+            "scheduled_at": m.scheduled_at.isoformat(),
+            "appointment_type": m.appointment_type,
+            "status": m.status,
+            "token_number": m.token_number,
+            "notes": m.notes,
+        }
+        return Response(AppointmentListItemSerializer(data).data)
+
+    @extend_schema(
+        tags=["appointments"],
+        summary="Edit appointment",
+        description=(
+            "Update editable fields of an appointment. "
+            "Only allowed when status is 'scheduled' or 'confirmed'. "
+            "All fields are optional — only supplied fields are changed."
+        ),
+        request=UpdateAppointmentSerializer,
+        responses={200: AppointmentListItemSerializer},
+    )
+    def patch(self, request: Request, appointment_id: uuid.UUID) -> Response:
+        from infrastructure.orm.models.appointment_model import AppointmentModel
+        from domain.entities.appointment import AppointmentStatus, AppointmentType
+        from infrastructure.orm.models.user_model import UserModel
+
+        ser = UpdateAppointmentSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        try:
+            m = AppointmentModel.objects.select_related("patient", "doctor").get(
+                id=appointment_id
+            )
+        except AppointmentModel.DoesNotExist:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Only allow editing pre-arrival appointments
+        if m.status not in (
+            AppointmentStatus.SCHEDULED.value,
+            AppointmentStatus.CONFIRMED.value,
+        ):
+            return Response(
+                {"error": f"Cannot edit a '{m.status}' appointment. Only scheduled or confirmed appointments can be edited."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Apply changes
+        if "scheduled_at" in data:
+            m.scheduled_at = data["scheduled_at"]
+        if "appointment_type" in data:
+            m.appointment_type = data["appointment_type"]
+        if "chamber_id" in data:
+            m.chamber_id = data["chamber_id"]
+        if "notes" in data:
+            m.notes = data["notes"]
+        if "doctor_id" in data:
+            if data["doctor_id"] is None:
+                return Response(
+                    {"error": "doctor_id cannot be null"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Verify doctor exists
+            if not UserModel.objects.filter(
+                id=data["doctor_id"], role__in=["doctor", "assistant_doctor"]
+            ).exists():
+                return Response(
+                    {"error": "Invalid doctor_id"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            m.doctor_id = data["doctor_id"]
+
+        m.save()
+
+        # Re-fetch with related for response
+        m.refresh_from_db()
+        m = AppointmentModel.objects.select_related("patient", "doctor").get(id=m.id)
+
+        response_data = {
+            "id": str(m.id),
+            "patient_id": str(m.patient_id),
+            "patient_name": m.patient.full_name,
+            "patient_phone": str(m.patient.phone),
+            "doctor_id": str(m.doctor_id),
+            "doctor_name": m.doctor.full_name,
+            "chamber_id": str(m.chamber_id) if m.chamber_id else None,
+            "scheduled_at": m.scheduled_at.isoformat(),
+            "appointment_type": m.appointment_type,
+            "status": m.status,
+            "token_number": m.token_number,
+            "notes": m.notes,
+        }
+        return Response(AppointmentListItemSerializer(response_data).data)
 
 
 @extend_schema(

@@ -27,7 +27,7 @@ TokenBlacklistView = extend_schema(
     responses={200: MessageSerializer},
 )(TokenBlacklistView)
 from interfaces.api.v1.patients.views import PatientRegistrationView, PatientDetailView, PatientSearchView, PatientHistoryView
-from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, AppointmentStatusView, CheckInView
+from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, AppointmentDetailView, AppointmentStatusView, CheckInView
 from interfaces.api.v1.consultations.views import StartConsultationView, CompleteConsultationView, UpdateVitalsView
 from interfaces.api.v1.medicines.views import MedicineSearchView
 from interfaces.api.v1.reports.views import ReportUploadView
@@ -67,6 +67,7 @@ urlpatterns = [
     # ── Appointments ──────────────────────────────────────────────────────────
     path("appointments/", BookAppointmentView.as_view(), name="book_appointment"),
     path("appointments/queue/", QueueView.as_view(), name="queue"),
+    path("appointments/<uuid:appointment_id>/", AppointmentDetailView.as_view(), name="appointment_detail"),
     path("appointments/<uuid:appointment_id>/check-in/", CheckInView.as_view(), name="appointment_check_in"),
     path("appointments/<uuid:appointment_id>/status/", AppointmentStatusView.as_view(), name="appointment_status"),
 

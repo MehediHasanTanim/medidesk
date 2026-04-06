@@ -8,6 +8,7 @@ import {
   appointmentsApi,
   type AppointmentListItem,
   type BookAppointmentPayload,
+  type UpdateAppointmentPayload,
 } from "@/features/appointments/api/appointmentsApi";
 import { usersApi, type DoctorOption } from "@/features/users/api/usersApi";
 import { chambersApi } from "@/features/chambers/api/chambersApi";
@@ -375,9 +376,262 @@ function BookModal({
   );
 }
 
+// ── EditModal ──────────────────────────────────────────────────────────────
+function EditModal({
+  appointment,
+  onClose,
+  onSaved,
+}: {
+  appointment: AppointmentListItem;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { user } = useAuthStore();
+  const canChangeDr = !["doctor", "assistant_doctor"].includes(user?.role ?? "");
+
+  // Pre-fill from existing appointment
+  const toLocalDt = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [doctorId, setDoctorId] = useState(appointment.doctor_id);
+  const [chamberId, setChamberId] = useState(appointment.chamber_id ?? "");
+  const [scheduledAt, setScheduledAt] = useState(toLocalDt(appointment.scheduled_at));
+  const [type, setType] = useState<"new" | "follow_up" | "walk_in">(
+    appointment.appointment_type as "new" | "follow_up" | "walk_in"
+  );
+  const [notes, setNotes] = useState(appointment.notes);
+  const [error, setError] = useState("");
+
+  const { data: doctors } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: usersApi.doctors,
+    enabled: canChangeDr,
+  });
+
+  const { data: chambersData } = useQuery({
+    queryKey: ["chambers"],
+    queryFn: () => chambersApi.list(),
+  });
+
+  const qc = useQueryClient();
+  const editMutation = useMutation({
+    mutationFn: (payload: UpdateAppointmentPayload) =>
+      appointmentsApi.update(appointment.id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      onSaved();
+    },
+    onError: (e: any) =>
+      setError(e.response?.data?.error ?? "Failed to save changes"),
+  });
+
+  const handleSubmit = () => {
+    setError("");
+    if (!scheduledAt) return setError("Select date & time");
+
+    const payload: UpdateAppointmentPayload = {
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      appointment_type: type,
+      chamber_id: chamberId || null,
+      notes,
+    };
+    if (canChangeDr) payload.doctor_id = doctorId;
+    editMutation.mutate(payload);
+  };
+
+  const inputStyle = {
+    width: "100%",
+    padding: "8px 12px",
+    borderRadius: radius.md,
+    border: `1px solid ${colors.border}`,
+    fontSize: font.base,
+    boxSizing: "border-box" as const,
+    background: colors.white,
+  };
+
+  const labelStyle = {
+    display: "block",
+    fontSize: font.sm,
+    fontWeight: 600 as const,
+    color: colors.textMuted,
+    marginBottom: 6,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.04em",
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          background: colors.white,
+          borderRadius: radius.lg,
+          padding: 28,
+          width: 480,
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: shadow.lg,
+        }}
+      >
+        <h2
+          style={{
+            margin: "0 0 4px",
+            fontSize: font.lg,
+            fontWeight: 700,
+            color: colors.text,
+          }}
+        >
+          Edit Appointment
+        </h2>
+        <p style={{ margin: "0 0 20px", fontSize: font.sm, color: colors.textMuted }}>
+          Patient: <strong>{appointment.patient_name}</strong> · {appointment.patient_phone}
+        </p>
+
+        {/* Doctor — only for non-clinical staff */}
+        {canChangeDr && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Doctor</label>
+            <select
+              value={doctorId}
+              onChange={(e) => setDoctorId(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Select doctor…</option>
+              {doctors?.map((d: DoctorOption) => (
+                <option key={d.id} value={d.id}>
+                  {d.full_name} (
+                  {d.role === "assistant_doctor" ? "Asst. Doctor" : "Doctor"})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Chamber */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Chamber</label>
+          <select
+            value={chamberId}
+            onChange={(e) => setChamberId(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">No chamber</option>
+            {chambersData?.map((c: any) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date & Time */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Date &amp; Time</label>
+          <input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Type */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Type</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {(["new", "follow_up", "walk_in"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setType(t)}
+                style={{
+                  flex: 1,
+                  padding: "7px 0",
+                  border: `1px solid ${type === t ? colors.primary : colors.border}`,
+                  borderRadius: radius.md,
+                  background: type === t ? colors.primaryLight : colors.white,
+                  color: type === t ? colors.primary : colors.textMuted,
+                  cursor: "pointer",
+                  fontSize: font.sm,
+                  fontWeight: 500,
+                  textTransform: "capitalize",
+                }}
+              >
+                {t.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={labelStyle}>Notes</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+        </div>
+
+        {error && (
+          <p style={{ color: colors.danger, fontSize: font.sm, margin: "0 0 12px" }}>
+            {error}
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 18px",
+              border: `1px solid ${colors.border}`,
+              borderRadius: radius.md,
+              background: colors.white,
+              cursor: "pointer",
+              fontSize: font.base,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={editMutation.isPending}
+            style={{
+              padding: "8px 18px",
+              border: "none",
+              borderRadius: radius.md,
+              background: colors.primary,
+              color: colors.white,
+              cursor: "pointer",
+              fontSize: font.base,
+              fontWeight: 600,
+              opacity: editMutation.isPending ? 0.7 : 1,
+            }}
+          >
+            {editMutation.isPending ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function AppointmentsPage() {
   const [showModal, setShowModal] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState<AppointmentListItem | null>(null);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -440,6 +694,16 @@ export default function AppointmentsPage() {
           onBooked={() => {
             setShowModal(false);
             showToast("Appointment booked successfully", "success");
+          }}
+        />
+      )}
+      {editingAppointment && (
+        <EditModal
+          appointment={editingAppointment}
+          onClose={() => setEditingAppointment(null)}
+          onSaved={() => {
+            setEditingAppointment(null);
+            showToast("Appointment updated", "success");
           }}
         />
       )}
@@ -631,6 +895,25 @@ export default function AppointmentsPage() {
                   {/* Actions */}
                   <td style={{ padding: "12px 16px" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {/* Edit — scheduled or confirmed only */}
+                      {["scheduled", "confirmed"].includes(item.status) && (
+                        <button
+                          onClick={() => setEditingAppointment(item)}
+                          style={{
+                            padding: "3px 10px",
+                            background: colors.bg,
+                            color: colors.text,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: radius.sm,
+                            cursor: "pointer",
+                            fontSize: font.sm,
+                            fontWeight: 500,
+                          }}
+                        >
+                          ✏ Edit
+                        </button>
+                      )}
+
                       {/* Check In — receptionist/assistant when scheduled */}
                       {item.status === "scheduled" && canCheckIn && (
                         <button
