@@ -28,6 +28,12 @@ TokenBlacklistView = extend_schema(
 )(TokenBlacklistView)
 from interfaces.api.v1.patients.views import PatientRegistrationView, PatientDetailView, PatientSearchView, PatientHistoryView
 from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, AppointmentDetailView, AppointmentStatusView, CheckInView
+from interfaces.api.v1.doctors.views import (
+    SpecialityListView,
+    SpecialityDetailView,
+    DoctorProfileListView,
+    DoctorProfileDetailView,
+)
 from interfaces.api.v1.consultations.views import StartConsultationView, CompleteConsultationView, UpdateVitalsView
 from interfaces.api.v1.medicines.views import MedicineSearchView
 from interfaces.api.v1.reports.views import ReportUploadView
@@ -92,4 +98,12 @@ urlpatterns = [
 
     # ── Medicines ─────────────────────────────────────────────────────────────
     path("medicines/search/", MedicineSearchView.as_view(), name="medicine_search"),
+
+    # ── Specialities ──────────────────────────────────────────────────────────
+    path("specialities/", SpecialityListView.as_view(), name="speciality_list"),
+    path("specialities/<uuid:speciality_id>/", SpecialityDetailView.as_view(), name="speciality_detail"),
+
+    # ── Doctor Profiles ───────────────────────────────────────────────────────
+    path("doctors/profiles/", DoctorProfileListView.as_view(), name="doctor_profile_list"),
+    path("doctors/profiles/<uuid:profile_id>/", DoctorProfileDetailView.as_view(), name="doctor_profile_detail"),
 ]

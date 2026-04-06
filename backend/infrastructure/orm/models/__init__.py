@@ -7,6 +7,7 @@ from infrastructure.orm.models.medicine_model import BrandMedicineModel, Generic
 from infrastructure.orm.models.billing_model import InvoiceItemModel, InvoiceModel, PaymentModel
 from infrastructure.orm.models.audit_log_model import AuditLogModel
 from infrastructure.orm.models.test_order_model import ReportDocumentModel, TestOrderModel
+from infrastructure.orm.models.doctor_model import SpecialityModel, DoctorProfileModel
 
 __all__ = [
     "UserModel",
@@ -24,4 +25,6 @@ __all__ = [
     "AuditLogModel",
     "TestOrderModel",
     "ReportDocumentModel",
+    "SpecialityModel",
+    "DoctorProfileModel",
 ]
