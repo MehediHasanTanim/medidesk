@@ -17,6 +17,21 @@ class RegisterPatientDTO:
 
 
 @dataclass
+class UpdatePatientDTO:
+    patient_id: str
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
+    address: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    email: Optional[str] = None
+    national_id: Optional[str] = None
+    allergies: Optional[List[str]] = None
+    chronic_diseases: Optional[List[str]] = None
+    family_history: Optional[str] = None
+
+
+@dataclass
 class PatientResponseDTO:
     id: str
     patient_id: str
@@ -25,7 +40,9 @@ class PatientResponseDTO:
     gender: str
     address: str
     age: Optional[int]
+    date_of_birth: Optional[str]
     email: Optional[str]
+    national_id: Optional[str]
     allergies: List[str]
     chronic_diseases: List[str]
     family_history: str

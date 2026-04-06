@@ -16,9 +16,13 @@ class BookAppointmentDTO:
 @dataclass
 class AppointmentResponseDTO:
     id: str
+    patient_id: str
     patient_name: str
     patient_phone: str
+    doctor_id: str
+    chamber_id: Optional[str]
     scheduled_at: str
     appointment_type: str
     status: str
     token_number: Optional[int]
+    notes: str = ""

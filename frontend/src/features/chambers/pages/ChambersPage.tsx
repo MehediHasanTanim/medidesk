@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
+import Toast, { useToast } from "@/shared/components/Toast";
 import MapPicker from "@/shared/components/MapPicker";
 import { chambersApi, type ChamberPayload } from "@/features/chambers/api/chambersApi";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
@@ -110,6 +111,7 @@ export default function ChambersPage() {
   const [modal, setModal] = useState<{ open: boolean; chamber?: Chamber }>({ open: false });
   const [showInactive, setShowInactive] = useState(false);
   const qc = useQueryClient();
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
   const isAdmin = useAuthStore((s) => s.isAdmin);
 
   const { data: chambers = [], isLoading } = useQuery({
@@ -119,17 +121,17 @@ export default function ChambersPage() {
 
   const deactivate = useMutation({
     mutationFn: (id: string) => chambersApi.update(id, { is_active: false }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["chambers"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["chambers"] }); showToast("Chamber deactivated"); },
   });
 
   const reactivate = useMutation({
     mutationFn: (id: string) => chambersApi.update(id, { is_active: true }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["chambers"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["chambers"] }); showToast("Chamber reactivated"); },
   });
 
   const deleteChamber = useMutation({
     mutationFn: (id: string) => chambersApi.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["chambers"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["chambers"] }); showToast("Chamber deleted", "info"); },
   });
 
   return (
@@ -236,9 +238,14 @@ export default function ChambersPage() {
         <ChamberModal
           chamber={modal.chamber}
           onClose={() => setModal({ open: false })}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["chambers"] })}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["chambers"] });
+            showToast(modal.chamber ? "Chamber updated successfully" : "Chamber added successfully");
+          }}
         />
       )}
+
+      <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismissToast} />
     </AppShell>
   );
 }

@@ -51,10 +51,14 @@ class BookAppointmentUseCase:
 
         return AppointmentResponseDTO(
             id=str(saved.id),
+            patient_id=str(saved.patient_id),
             patient_name=patient.full_name,
             patient_phone=str(patient.phone),
+            doctor_id=str(saved.doctor_id),
+            chamber_id=str(saved.chamber_id) if saved.chamber_id else None,
             scheduled_at=saved.scheduled_at.isoformat(),
             appointment_type=saved.appointment_type.value,
             status=saved.status.value,
             token_number=saved.token_number,
+            notes=saved.notes,
         )

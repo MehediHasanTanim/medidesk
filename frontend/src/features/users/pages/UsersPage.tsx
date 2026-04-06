@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
+import Toast, { useToast } from "@/shared/components/Toast";
 import { usersApi, type CreateUserPayload, type UpdateUserPayload } from "@/features/users/api/usersApi";
 import { chambersApi } from "@/features/chambers/api/chambersApi";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
@@ -227,6 +228,7 @@ export default function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
   const [filterActive, setFilterActive] = useState<boolean | undefined>(true);
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -271,12 +273,12 @@ export default function UsersPage() {
 
   const deactivate = useMutation({
     mutationFn: usersApi.deactivate,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); showToast("User deactivated"); },
   });
 
   const reactivate = useMutation({
     mutationFn: (id: string) => usersApi.update(id, { is_active: true }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); showToast("User reactivated"); },
   });
 
   return (
@@ -481,7 +483,7 @@ export default function UsersPage() {
       {showCreate && (
         <CreateUserModal
           onClose={() => setShowCreate(false)}
-          onCreated={() => qc.invalidateQueries({ queryKey: ["users"] })}
+          onCreated={() => { qc.invalidateQueries({ queryKey: ["users"] }); showToast("User created successfully"); }}
         />
       )}
 
@@ -489,9 +491,11 @@ export default function UsersPage() {
         <EditUserModal
           user={editUser}
           onClose={() => setEditUser(null)}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["users"] })}
+          onSaved={() => { qc.invalidateQueries({ queryKey: ["users"] }); showToast("User updated successfully"); }}
         />
       )}
+
+      <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismissToast} />
     </AppShell>
   );
 }

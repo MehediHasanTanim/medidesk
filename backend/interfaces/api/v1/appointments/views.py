@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -11,17 +11,104 @@ from rest_framework.views import APIView
 from application.dtos.appointment_dto import BookAppointmentDTO
 from interfaces.api.container import Container
 from interfaces.api.v1.appointments.serializers import (
+    AppointmentListItemSerializer,
     AppointmentResponseSerializer,
     BookAppointmentSerializer,
+    CheckInResponseSerializer,
     QueueItemSerializer,
+    StatusUpdateSerializer,
 )
 from interfaces.permissions import RolePermission
 
 
-@extend_schema(tags=["appointments"])
 class BookAppointmentView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist", "assistant"])]
 
+    @extend_schema(
+        tags=["appointments"],
+        summary="List appointments",
+        description=(
+            "Return a list of appointments. Filterable by date, patient, doctor, and status. "
+            "Defaults to today if no date is supplied."
+        ),
+        parameters=[
+            OpenApiParameter("date", str, description="Filter by date (YYYY-MM-DD). Defaults to today."),
+            OpenApiParameter("patient_id", str, description="Filter by patient UUID."),
+            OpenApiParameter("doctor_id", str, description="Filter by doctor UUID."),
+            OpenApiParameter("status", str, description="Filter by status (scheduled, confirmed, in_queue, …)."),
+            OpenApiParameter("limit", int, description="Max results to return (default 50)."),
+            OpenApiParameter("offset", int, description="Number of results to skip (default 0)."),
+        ],
+        responses={200: AppointmentListItemSerializer(many=True)},
+    )
+    def get(self, request: Request) -> Response:
+        from infrastructure.orm.models.appointment_model import AppointmentModel
+
+        target_date_str = request.query_params.get("date", date.today().isoformat())
+        try:
+            target_date = date.fromisoformat(target_date_str)
+        except ValueError:
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+
+        qs = AppointmentModel.objects.filter(
+            scheduled_at__date=target_date
+        ).select_related("patient", "doctor").order_by("scheduled_at")
+
+        if pid := request.query_params.get("patient_id"):
+            try:
+                qs = qs.filter(patient_id=uuid.UUID(pid))
+            except ValueError:
+                return Response({"error": "Invalid patient_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if did := request.query_params.get("doctor_id"):
+            try:
+                qs = qs.filter(doctor_id=uuid.UUID(did))
+            except ValueError:
+                return Response({"error": "Invalid doctor_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if st := request.query_params.get("status"):
+            qs = qs.filter(status=st)
+
+        total = qs.count()
+        page_qs = qs[offset: offset + limit]
+
+        items = []
+        for m in page_qs:
+            items.append({
+                "id": str(m.id),
+                "patient_id": str(m.patient_id),
+                "patient_name": m.patient.full_name,
+                "patient_phone": str(m.patient.phone),
+                "doctor_id": str(m.doctor_id),
+                "doctor_name": m.doctor.full_name,
+                "chamber_id": str(m.chamber_id) if m.chamber_id else None,
+                "scheduled_at": m.scheduled_at.isoformat(),
+                "appointment_type": m.appointment_type,
+                "status": m.status,
+                "token_number": m.token_number,
+                "notes": m.notes,
+            })
+
+        return Response({
+            "count": total,
+            "limit": limit,
+            "offset": offset,
+            "results": AppointmentListItemSerializer(items, many=True).data,
+        })
+
+    @extend_schema(
+        tags=["appointments"],
+        summary="Book appointment",
+        description=(
+            "Create a new appointment. Doctors and assistant_doctors default to themselves as the doctor. "
+            "Receptionists and assistants must supply `doctor_id`."
+        ),
+        request=BookAppointmentSerializer,
+        responses={201: AppointmentResponseSerializer},
+    )
     def post(self, request: Request) -> Response:
         serializer = BookAppointmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -58,38 +145,97 @@ class BookAppointmentView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(tags=["appointments"])
 class QueueView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["appointments"],
+        summary="Get today's queue",
+        description=(
+            "Returns appointments in active queue statuses (confirmed, in_queue, in_progress) "
+            "ordered by token number. Optionally filter by chamber and/or date."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "date", str,
+                description="Queue date (YYYY-MM-DD). Defaults to today.",
+            ),
+            OpenApiParameter(
+                "chamber_id", str,
+                description="Filter queue to a specific chamber UUID.",
+            ),
+        ],
+        responses={200: QueueItemSerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
-        from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
+        from infrastructure.orm.models.appointment_model import AppointmentModel
+
         target_date_str = request.query_params.get("date", date.today().isoformat())
         chamber_id_str = request.query_params.get("chamber_id")
 
-        target_date = date.fromisoformat(target_date_str)
-        chamber_id = uuid.UUID(chamber_id_str) if chamber_id_str else None
+        try:
+            target_date = date.fromisoformat(target_date_str)
+        except ValueError:
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        queue = DjangoAppointmentRepository().get_queue(target_date, chamber_id)
+        qs = AppointmentModel.objects.filter(
+            scheduled_at__date=target_date,
+            status__in=["confirmed", "in_queue", "in_progress"],
+        ).select_related("patient").order_by("token_number")
+
+        if chamber_id_str:
+            try:
+                qs = qs.filter(chamber_id=uuid.UUID(chamber_id_str))
+            except ValueError:
+                return Response({"error": "Invalid chamber_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        items = []
+        for m in qs:
+            items.append({
+                "id": str(m.id),
+                "token_number": m.token_number,
+                "patient_id": str(m.patient_id),
+                "patient_name": m.patient.full_name,
+                "patient_phone": str(m.patient.phone),
+                "scheduled_at": m.scheduled_at.isoformat(),
+                "appointment_type": m.appointment_type,
+                "status": m.status,
+                "notes": m.notes,
+            })
+
         return Response({
             "date": target_date_str,
-            "total": len(queue),
-            "queue": [QueueItemSerializer(a.__dict__).data for a in queue],
+            "total": len(items),
+            "queue": QueueItemSerializer(items, many=True).data,
         })
 
 
-@extend_schema(tags=["appointments"])
 class AppointmentStatusView(APIView):
     """Generic status transitions (confirm, cancel, no_show, in_progress, completed)."""
     permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor", "receptionist"])]
 
+    @extend_schema(
+        tags=["appointments"],
+        summary="Update appointment status",
+        description=(
+            "Transition an appointment to a new status. "
+            "Valid values: confirmed, cancelled, no_show, in_progress, completed. "
+            "Use the dedicated `/check-in/` endpoint to set `in_queue`."
+        ),
+        request=StatusUpdateSerializer,
+        responses={
+            200: AppointmentResponseSerializer,
+            400: None,
+            404: None,
+        },
+    )
     def patch(self, request: Request, appointment_id: uuid.UUID) -> Response:
         from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
         from domain.entities.appointment import AppointmentStatus
 
-        new_status = request.data.get("status")
-        if not new_status:
-            return Response({"error": "status is required"}, status=status.HTTP_400_BAD_REQUEST)
+        ser = StatusUpdateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        new_status = ser.validated_data["status"]
 
         repo = DjangoAppointmentRepository()
         appt = repo.get_by_id(appointment_id)
@@ -97,15 +243,15 @@ class AppointmentStatusView(APIView):
             return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            if new_status == AppointmentStatus.CONFIRMED:
+            if new_status == AppointmentStatus.CONFIRMED.value:
                 appt.confirm()
-            elif new_status == AppointmentStatus.CANCELLED:
+            elif new_status == AppointmentStatus.CANCELLED.value:
                 appt.cancel()
-            elif new_status == AppointmentStatus.NO_SHOW:
+            elif new_status == AppointmentStatus.NO_SHOW.value:
                 appt.mark_no_show()
-            elif new_status == AppointmentStatus.IN_PROGRESS:
+            elif new_status == AppointmentStatus.IN_PROGRESS.value:
                 appt.mark_in_progress()
-            elif new_status == AppointmentStatus.COMPLETED:
+            elif new_status == AppointmentStatus.COMPLETED.value:
                 appt.complete()
             else:
                 return Response(
@@ -126,6 +272,8 @@ class AppointmentStatusView(APIView):
         "Mark a patient as arrived: assigns the next available queue token for the day "
         "and sets status to 'in_queue'. Accessible to receptionist and assistant."
     ),
+    request=None,
+    responses={200: CheckInResponseSerializer},
 )
 class CheckInView(APIView):
     permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "doctor"])]

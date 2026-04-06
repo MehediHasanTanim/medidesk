@@ -9,6 +9,7 @@ from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from application.use_cases.appointment.book_appointment import BookAppointmentUseCase
 from application.use_cases.consultation.complete_consultation import CompleteConsultationUseCase
 from application.use_cases.patient.register_patient import RegisterPatientUseCase
+from application.use_cases.patient.update_patient import UpdatePatientUseCase
 
 
 class Container:
@@ -23,6 +24,10 @@ class Container:
     @staticmethod
     def register_patient() -> RegisterPatientUseCase:
         return RegisterPatientUseCase(uow=DjangoUnitOfWork())
+
+    @staticmethod
+    def update_patient() -> UpdatePatientUseCase:
+        return UpdatePatientUseCase(uow=DjangoUnitOfWork())
 
     @staticmethod
     def book_appointment() -> BookAppointmentUseCase:

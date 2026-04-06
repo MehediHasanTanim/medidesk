@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import apiClient from "@/shared/lib/apiClient";
+import type { Patient } from "@/features/patients/api/patientsApi";
 
 interface Vitals {
   bp: string | null;
@@ -53,18 +54,7 @@ interface Report {
 }
 
 interface PatientHistory {
-  patient: {
-    id: string;
-    patient_id: string;
-    full_name: string;
-    phone: string;
-    gender: string;
-    date_of_birth: string | null;
-    age: number | null;
-    address: string;
-    allergies: string[];
-    chronic_diseases: string[];
-  };
+  patient: Patient;
   appointments: Array<{
     id: string;
     scheduled_at: string;
