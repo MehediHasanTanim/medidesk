@@ -15,6 +15,8 @@ export interface Chamber {
   name: string;
   address: string;
   phone: string;
+  latitude: number | null;
+  longitude: number | null;
   is_active: boolean;
 }
 

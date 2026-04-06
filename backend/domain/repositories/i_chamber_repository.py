@@ -15,3 +15,6 @@ class IChamberRepository(ABC):
 
     @abstractmethod
     def save(self, chamber: Chamber) -> Chamber: ...
+
+    @abstractmethod
+    def delete(self, chamber_id: UUID) -> None: ...

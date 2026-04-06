@@ -276,7 +276,7 @@ export default function AppointmentsPage() {
                   <td style={{ padding: "12px 16px", color: colors.text, fontSize: font.base }}>
                     {new Date(item.scheduled_at).toLocaleTimeString("en-BD", { hour: "2-digit", minute: "2-digit" })}
                   </td>
-                  <td style={{ padding: "12px 16px", color: colors.text, fontSize: font.base, fontFamily: "monospace", fontSize: "12px" }}>
+                  <td style={{ padding: "12px 16px", color: colors.text, fontFamily: "monospace", fontSize: "12px" }}>
                     {item.patient_id}
                   </td>
                   <td style={{ padding: "12px 16px", color: colors.textMuted, fontSize: font.sm, textTransform: "capitalize" }}>

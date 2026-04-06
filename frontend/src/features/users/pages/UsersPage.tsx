@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
 import { usersApi, type CreateUserPayload, type UpdateUserPayload } from "@/features/users/api/usersApi";
@@ -204,16 +204,70 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRecord; onClose: 
   );
 }
 
+const PAGE_SIZE = 10;
+
+// Columns that support server-side sorting and their ORM field names
+const SORTABLE_COLUMNS = [
+  { label: "Name",     field: "full_name"  },
+  { label: "Username", field: "username"   },
+  { label: "Email",    field: "email"      },
+  { label: "Role",     field: "role"       },
+  { label: "Status",   field: "is_active"  },
+] as const;
+
+type SortField = typeof SORTABLE_COLUMNS[number]["field"];
+
+function SortIcon({ field, ordering }: { field: SortField; ordering: string }) {
+  if (ordering === field) return <span style={{ marginLeft: 4 }}>↑</span>;
+  if (ordering === `-${field}`) return <span style={{ marginLeft: 4 }}>↓</span>;
+  return <span style={{ marginLeft: 4, opacity: 0.3 }}>↕</span>;
+}
+
 export default function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
   const [filterActive, setFilterActive] = useState<boolean | undefined>(true);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [ordering, setOrdering] = useState<string>("full_name");
   const qc = useQueryClient();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ["users", filterActive],
-    queryFn: () => usersApi.list(filterActive),
+  // Debounce: fire query 300 ms after the user stops typing
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
+
+  const handleFilterChange = (val: boolean | undefined) => {
+    setFilterActive(val);
+    setPage(1);
+  };
+
+  const handleSort = (field: SortField) => {
+    setOrdering((prev) => (prev === field ? `-${field}` : field));
+    setPage(1);
+  };
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["users", filterActive, search, page, ordering],
+    queryFn: () => usersApi.list({
+      is_active: filterActive,
+      search: search || undefined,
+      page,
+      page_size: PAGE_SIZE,
+      ordering,
+    }),
   });
+
+  const users = data?.results ?? [];
+  const totalPages = data?.total_pages ?? 1;
+  const totalCount = data?.count ?? 0;
 
   const deactivate = useMutation({
     mutationFn: usersApi.deactivate,
@@ -232,30 +286,60 @@ export default function UsersPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: font.xl, fontWeight: 700, color: colors.text }}>Users</h1>
-            <p style={{ margin: "4px 0 0", color: colors.textMuted, fontSize: font.base }}>Manage staff accounts and role assignments</p>
+            <p style={{ margin: "4px 0 0", color: colors.textMuted, fontSize: font.base }}>
+              Manage staff accounts and role assignments
+            </p>
           </div>
-          <button onClick={() => setShowCreate(true)} style={{ padding: "9px 20px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}>
+          <button
+            onClick={() => setShowCreate(true)}
+            style={{ padding: "9px 20px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}
+          >
             + Add User
           </button>
         </div>
 
-        {/* Filter tabs */}
-        <div style={{ display: "flex", gap: 2, marginBottom: 20, background: colors.borderLight, borderRadius: radius.md, padding: 4, width: "fit-content" }}>
-          {([["Active", true], ["All", undefined], ["Inactive", false]] as const).map(([label, val]) => (
-            <button
-              key={label}
-              onClick={() => setFilterActive(val as boolean | undefined)}
-              style={{
-                padding: "6px 16px", border: "none", borderRadius: radius.sm, cursor: "pointer",
-                fontSize: font.base, fontWeight: 500,
-                background: filterActive === val ? colors.white : "transparent",
-                color: filterActive === val ? colors.primary : colors.textMuted,
-                boxShadow: filterActive === val ? shadow.sm : "none",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Toolbar: filter tabs + search */}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 2, background: colors.borderLight, borderRadius: radius.md, padding: 4 }}>
+            {([["Active", true], ["All", undefined], ["Inactive", false]] as const).map(([label, val]) => (
+              <button
+                key={label}
+                onClick={() => handleFilterChange(val as boolean | undefined)}
+                style={{
+                  padding: "6px 16px", border: "none", borderRadius: radius.sm, cursor: "pointer",
+                  fontSize: font.base, fontWeight: 500,
+                  background: filterActive === val ? colors.white : "transparent",
+                  color: filterActive === val ? colors.primary : colors.textMuted,
+                  boxShadow: filterActive === val ? shadow.sm : "none",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+            <input
+              placeholder="Search by name, username or email…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              style={{ width: "100%", padding: "8px 36px 8px 12px", borderRadius: radius.md, border: `1px solid ${colors.border}`, fontSize: font.base, outline: "none", boxSizing: "border-box" }}
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput("")}
+                style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: colors.textMuted, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 2 }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {!isLoading && (
+            <span style={{ color: colors.textMuted, fontSize: font.sm, marginLeft: "auto" }}>
+              {totalCount} user{totalCount !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
 
         {/* Table */}
@@ -263,14 +347,32 @@ export default function UsersPage() {
           {isLoading ? (
             <div style={{ padding: 40, textAlign: "center", color: colors.textMuted }}>Loading users…</div>
           ) : users.length === 0 ? (
-            <div style={{ padding: 40, textAlign: "center", color: colors.textMuted }}>No users found.</div>
+            <div style={{ padding: 40, textAlign: "center", color: colors.textMuted }}>
+              {search ? `No users found for "${search}".` : "No users found."}
+            </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: colors.bg }}>
-                  {["Name", "Username", "Email", "Role", "Status", "Actions"].map((h) => (
-                    <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: font.sm, fontWeight: 600, color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                  {SORTABLE_COLUMNS.map(({ label, field }) => (
+                    <th
+                      key={field}
+                      onClick={() => handleSort(field)}
+                      style={{
+                        padding: "12px 16px", textAlign: "left", fontSize: font.sm,
+                        fontWeight: 600, color: colors.textMuted,
+                        borderBottom: `1px solid ${colors.border}`,
+                        cursor: "pointer", userSelect: "none",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {label}
+                      <SortIcon field={field} ordering={ordering} />
+                    </th>
                   ))}
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: font.sm, fontWeight: 600, color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -323,6 +425,57 @@ export default function UsersPage() {
             </table>
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
+            <span style={{ color: colors.textMuted, fontSize: font.sm }}>
+              Page {page} of {totalPages} · {totalCount} total
+            </span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => setPage(1)}
+                disabled={page === 1}
+                style={{ padding: "6px 12px", border: `1px solid ${colors.border}`, borderRadius: radius.md, background: colors.white, cursor: page === 1 ? "not-allowed" : "pointer", fontSize: font.sm, color: page === 1 ? colors.textMuted : colors.text, opacity: page === 1 ? 0.5 : 1 }}
+              >
+                «
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={{ padding: "6px 14px", border: `1px solid ${colors.border}`, borderRadius: radius.md, background: colors.white, cursor: page === 1 ? "not-allowed" : "pointer", fontSize: font.sm, color: page === 1 ? colors.textMuted : colors.text, opacity: page === 1 ? 0.5 : 1 }}
+              >
+                ‹ Prev
+              </button>
+              {/* Page number buttons — show at most 5 around current */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => Math.abs(p - page) <= 2)
+                .map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    style={{ padding: "6px 12px", border: `1px solid ${p === page ? colors.primary : colors.border}`, borderRadius: radius.md, background: p === page ? colors.primary : colors.white, color: p === page ? colors.white : colors.text, cursor: "pointer", fontSize: font.sm, fontWeight: p === page ? 600 : 400 }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                style={{ padding: "6px 14px", border: `1px solid ${colors.border}`, borderRadius: radius.md, background: colors.white, cursor: page === totalPages ? "not-allowed" : "pointer", fontSize: font.sm, color: page === totalPages ? colors.textMuted : colors.text, opacity: page === totalPages ? 0.5 : 1 }}
+              >
+                Next ›
+              </button>
+              <button
+                onClick={() => setPage(totalPages)}
+                disabled={page === totalPages}
+                style={{ padding: "6px 12px", border: `1px solid ${colors.border}`, borderRadius: radius.md, background: colors.white, cursor: page === totalPages ? "not-allowed" : "pointer", fontSize: font.sm, color: page === totalPages ? colors.textMuted : colors.text, opacity: page === totalPages ? 0.5 : 1 }}
+              >
+                »
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showCreate && (

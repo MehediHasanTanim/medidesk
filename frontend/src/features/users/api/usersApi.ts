@@ -24,13 +24,37 @@ export interface DoctorOption {
   role: string;
 }
 
+export interface UserListParams {
+  is_active?: boolean;
+  search?: string;
+  page?: number;
+  page_size?: number;
+  ordering?: string;
+}
+
+export interface UserListResponse {
+  count: number;
+  total_pages: number;
+  page: number;
+  page_size: number;
+  results: UserRecord[];
+}
+
 export const usersApi = {
   doctors: () =>
     apiClient.get<DoctorOption[]>("/users/doctors/").then((r) => r.data),
 
-  list: (isActive?: boolean) =>
+  list: (params: UserListParams = {}) =>
     apiClient
-      .get<UserRecord[]>("/users/", { params: isActive !== undefined ? { is_active: isActive } : {} })
+      .get<UserListResponse>("/users/", {
+        params: {
+          ...(params.is_active !== undefined ? { is_active: params.is_active } : {}),
+          ...(params.search ? { search: params.search } : {}),
+          ...(params.page !== undefined ? { page: params.page } : {}),
+          ...(params.page_size !== undefined ? { page_size: params.page_size } : {}),
+          ...(params.ordering ? { ordering: params.ordering } : {}),
+        },
+      })
       .then((r) => r.data),
 
   get: (id: string) =>

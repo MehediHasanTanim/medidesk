@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID
 
 from domain.entities.user import User, UserRole
@@ -24,11 +24,40 @@ class DjangoUserRepository(IUserRepository):
         except UserModel.DoesNotExist:
             return None
 
-    def list_all(self, is_active: Optional[bool] = None) -> List[User]:
-        qs = UserModel.objects.prefetch_related("chambers").order_by("full_name")
+    # Fields the caller is allowed to sort by (prefix with "-" for DESC)
+    _ALLOWED_ORDERINGS = {
+        "full_name", "username", "email", "role", "is_active", "date_joined",
+    }
+
+    def list_all(
+        self,
+        is_active: Optional[bool] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        ordering: Optional[str] = None,
+    ) -> Tuple[int, List[User]]:
+        # Resolve ordering, falling back to full_name
+        order_field = "full_name"
+        if ordering:
+            field = ordering.lstrip("-")
+            if field in self._ALLOWED_ORDERINGS:
+                order_field = ordering  # keep leading "-" for DESC
+
+        qs = UserModel.objects.prefetch_related("chambers").order_by(order_field)
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
-        return [self._to_domain(m) for m in qs]
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(full_name__icontains=search) |
+                Q(username__icontains=search) |
+                Q(email__icontains=search)
+            )
+        total = qs.count()
+        offset = (page - 1) * page_size
+        users = [self._to_domain(m) for m in qs[offset: offset + page_size]]
+        return total, users
 
     def list_by_role(self, role: UserRole) -> List[User]:
         qs = UserModel.objects.prefetch_related("chambers").filter(

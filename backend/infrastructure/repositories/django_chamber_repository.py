@@ -27,10 +27,15 @@ class DjangoChamberRepository(IChamberRepository):
                 "name": chamber.name,
                 "address": chamber.address,
                 "phone": chamber.phone,
+                "latitude": chamber.latitude,
+                "longitude": chamber.longitude,
                 "is_active": chamber.is_active,
             },
         )
         return self._to_domain(model)
+
+    def delete(self, chamber_id: UUID) -> None:
+        ChamberModel.objects.filter(id=chamber_id).delete()
 
     @staticmethod
     def _to_domain(model: ChamberModel) -> Chamber:
@@ -39,5 +44,7 @@ class DjangoChamberRepository(IChamberRepository):
             name=model.name,
             address=model.address,
             phone=model.phone,
+            latitude=float(model.latitude) if model.latitude is not None else None,
+            longitude=float(model.longitude) if model.longitude is not None else None,
             is_active=model.is_active,
         )

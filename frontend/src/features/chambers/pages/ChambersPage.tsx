@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
+import MapPicker from "@/shared/components/MapPicker";
 import { chambersApi, type ChamberPayload } from "@/features/chambers/api/chambersApi";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import type { Chamber } from "@/shared/types/auth";
@@ -26,6 +27,8 @@ function ChamberModal({
     name: chamber?.name ?? "",
     address: chamber?.address ?? "",
     phone: chamber?.phone ?? "",
+    latitude: chamber?.latitude ?? null,
+    longitude: chamber?.longitude ?? null,
   });
   const [error, setError] = useState("");
 
@@ -42,6 +45,14 @@ function ChamberModal({
   const set = (key: keyof ChamberPayload, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const setCoords = (lat: number, lng: number, address?: string) =>
+    setForm((f) => ({
+      ...f,
+      latitude: parseFloat(lat.toFixed(6)),
+      longitude: parseFloat(lng.toFixed(6)),
+      ...(address ? { address } : {}),
+    }));
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
@@ -49,7 +60,8 @@ function ChamberModal({
     }}>
       <div style={{
         background: colors.white, borderRadius: radius.lg,
-        padding: 32, width: 440, boxShadow: shadow.lg,
+        padding: 32, width: 580, maxHeight: "90vh",
+        overflowY: "auto", boxShadow: shadow.lg,
       }}>
         <h3 style={{ margin: "0 0 20px", fontSize: font.lg, fontWeight: 600 }}>
           {chamber ? "Edit Chamber" : "Add Chamber"}
@@ -67,6 +79,17 @@ function ChamberModal({
             />
           </div>
         ))}
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", marginBottom: 8, fontWeight: 500, fontSize: font.base }}>
+            GPS Location <span style={{ color: colors.textMuted, fontWeight: 400 }}>(optional)</span>
+          </label>
+          <MapPicker
+            lat={form.latitude ?? null}
+            lng={form.longitude ?? null}
+            onChange={setCoords}
+          />
+        </div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
           <button onClick={onClose} style={{ padding: "8px 18px", background: colors.borderLight, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}>Cancel</button>
@@ -101,6 +124,11 @@ export default function ChambersPage() {
 
   const reactivate = useMutation({
     mutationFn: (id: string) => chambersApi.update(id, { is_active: true }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chambers"] }),
+  });
+
+  const deleteChamber = useMutation({
+    mutationFn: (id: string) => chambersApi.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["chambers"] }),
   });
 
@@ -158,6 +186,11 @@ export default function ChambersPage() {
                   </span>
                 </div>
                 <div style={{ color: colors.textMuted, fontSize: font.base, marginBottom: 6 }}>📍 {c.address}</div>
+                {c.latitude != null && c.longitude != null && (
+                  <div style={{ color: colors.textMuted, fontSize: "12px", marginBottom: 6, fontFamily: "monospace" }}>
+                    🌐 {c.latitude.toFixed(6)}, {c.longitude.toFixed(6)}
+                  </div>
+                )}
                 <div style={{ color: colors.textMuted, fontSize: font.base, marginBottom: 16 }}>📞 {c.phone}</div>
                 {isAdmin() && (
                   <div style={{ display: "flex", gap: 8 }}>
@@ -182,6 +215,15 @@ export default function ChambersPage() {
                         Reactivate
                       </button>
                     )}
+                    <button
+                      onClick={() => {
+                        if (confirm(`Permanently delete "${c.name}"? This cannot be undone.`))
+                          deleteChamber.mutate(c.id);
+                      }}
+                      style={{ padding: "5px 14px", background: colors.danger, color: colors.white, border: "none", borderRadius: radius.sm, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 )}
               </div>

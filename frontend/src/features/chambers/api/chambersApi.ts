@@ -5,12 +5,16 @@ export interface ChamberPayload {
   name: string;
   address: string;
   phone: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface UpdateChamberPayload {
   name?: string;
   address?: string;
   phone?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   is_active?: boolean;
 }
 
@@ -28,4 +32,7 @@ export const chambersApi = {
 
   update: (id: string, payload: UpdateChamberPayload) =>
     apiClient.patch<Chamber>(`/chambers/${id}/`, payload).then((r) => r.data),
+
+  delete: (id: string) =>
+    apiClient.delete(`/chambers/${id}/`),
 };

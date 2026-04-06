@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID
 
 from domain.entities.user import User, UserRole
@@ -14,7 +14,14 @@ class IUserRepository(ABC):
     def get_by_username(self, username: str) -> Optional[User]: ...
 
     @abstractmethod
-    def list_all(self, is_active: Optional[bool] = None) -> List[User]: ...
+    def list_all(
+        self,
+        is_active: Optional[bool] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        ordering: Optional[str] = None,
+    ) -> Tuple[int, List[User]]: ...
 
     @abstractmethod
     def list_by_role(self, role: UserRole) -> List[User]: ...

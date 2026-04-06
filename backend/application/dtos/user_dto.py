@@ -46,6 +46,8 @@ class CreateChamberDTO:
     name: str
     address: str
     phone: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 @dataclass
@@ -54,4 +56,6 @@ class UpdateChamberDTO:
     name: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_active: Optional[bool] = None

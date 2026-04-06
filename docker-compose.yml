@@ -86,6 +86,7 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8005
+      VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
     volumes:
       - ./frontend/src:/app/src           # hot reload source
       - ./frontend/public:/app/public

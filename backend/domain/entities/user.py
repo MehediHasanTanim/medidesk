@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 
@@ -46,4 +46,6 @@ class Chamber:
     name: str
     address: str
     phone: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_active: bool = True

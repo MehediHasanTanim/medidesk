@@ -1,6 +1,6 @@
 import uuid
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -14,7 +14,6 @@ from interfaces.api.v1.chambers.serializers import CreateChamberSerializer, Upda
 from interfaces.permissions import AdminOnly
 
 
-@extend_schema(tags=["chambers"])
 class ChamberListView(APIView):
     """GET  /chambers/ — list chambers (all authenticated users)
        POST /chambers/ — create chamber (admin only)"""
@@ -24,8 +23,11 @@ class ChamberListView(APIView):
             return [IsAuthenticated(), AdminOnly()]
         return [IsAuthenticated()]
 
-
-
+    @extend_schema(
+        tags=["chambers"],
+        summary="List chambers",
+        description="Returns all chambers. Pass `active_only=false` to include inactive ones.",
+    )
     def get(self, request: Request) -> Response:
         active_only = request.query_params.get("active_only", "true") != "false"
         with DjangoUnitOfWork() as uow:
@@ -36,11 +38,23 @@ class ChamberListView(APIView):
                 "name": c.name,
                 "address": c.address,
                 "phone": c.phone,
+                "latitude": c.latitude,
+                "longitude": c.longitude,
                 "is_active": c.is_active,
             }
             for c in chambers
         ])
 
+    @extend_schema(
+        tags=["chambers"],
+        summary="Create chamber",
+        description="Creates a new clinic chamber/branch. Admin only.",
+        request=CreateChamberSerializer,
+        responses={
+            201: OpenApiResponse(description="Chamber created"),
+            400: OpenApiResponse(description="Validation error"),
+        },
+    )
     def post(self, request: Request) -> Response:
         serializer = CreateChamberSerializer(data=request.data)
         if not serializer.is_valid():
@@ -51,6 +65,8 @@ class ChamberListView(APIView):
             name=data["name"],
             address=data["address"],
             phone=data["phone"],
+            latitude=float(data["latitude"]) if data.get("latitude") is not None else None,
+            longitude=float(data["longitude"]) if data.get("longitude") is not None else None,
         )
         try:
             result = CreateChamberUseCase(uow=DjangoUnitOfWork()).execute(dto)
@@ -59,7 +75,6 @@ class ChamberListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(tags=["chambers"])
 class ChamberDetailView(APIView):
     """GET   /chambers/<id>/ — get chamber
        PATCH /chambers/<id>/ — update chamber (admin only)"""
@@ -69,6 +84,7 @@ class ChamberDetailView(APIView):
             return [IsAuthenticated(), AdminOnly()]
         return [IsAuthenticated()]
 
+    @extend_schema(tags=["chambers"], summary="Get chamber by ID")
     def get(self, request: Request, chamber_id: uuid.UUID) -> Response:
         with DjangoUnitOfWork() as uow:
             chamber = uow.chambers.get_by_id(chamber_id)
@@ -79,11 +95,42 @@ class ChamberDetailView(APIView):
             "name": chamber.name,
             "address": chamber.address,
             "phone": chamber.phone,
+            "latitude": chamber.latitude,
+            "longitude": chamber.longitude,
             "is_active": chamber.is_active,
         })
 
+    @extend_schema(
+        tags=["chambers"],
+        summary="Delete chamber",
+        description="Permanently deletes a chamber. Existing appointments will have their chamber set to null. Admin only.",
+        responses={
+            204: OpenApiResponse(description="Deleted"),
+            404: OpenApiResponse(description="Chamber not found"),
+        },
+    )
+    def delete(self, request: Request, chamber_id: uuid.UUID) -> Response:
+        with DjangoUnitOfWork() as uow:
+            chamber = uow.chambers.get_by_id(chamber_id)
+            if not chamber:
+                return Response({"error": "Chamber not found"}, status=status.HTTP_404_NOT_FOUND)
+            uow.chambers.delete(chamber_id)
+            uow.commit()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        tags=["chambers"],
+        summary="Update chamber",
+        description="Update name, address, phone, or is_active. All fields optional. Admin only.",
+        request=UpdateChamberSerializer,
+        responses={
+            200: OpenApiResponse(description="Chamber updated"),
+            400: OpenApiResponse(description="Validation error"),
+            404: OpenApiResponse(description="Chamber not found"),
+        },
+    )
     def patch(self, request: Request, chamber_id: uuid.UUID) -> Response:
-        serializer = UpdateChamberSerializer(data=request.data)
+        serializer = UpdateChamberSerializer(data=request.data, partial=True)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

@@ -16,6 +16,8 @@ class CreateChamberUseCase:
             name=dto.name,
             address=dto.address,
             phone=dto.phone,
+            latitude=dto.latitude,
+            longitude=dto.longitude,
             is_active=True,
         )
         with self._uow:
@@ -27,6 +29,8 @@ class CreateChamberUseCase:
             "name": saved.name,
             "address": saved.address,
             "phone": saved.phone,
+            "latitude": float(saved.latitude) if saved.latitude is not None else None,
+            "longitude": float(saved.longitude) if saved.longitude is not None else None,
             "is_active": saved.is_active,
         }
 
@@ -48,6 +52,10 @@ class UpdateChamberUseCase:
                 chamber.address = dto.address
             if dto.phone is not None:
                 chamber.phone = dto.phone
+            if dto.latitude is not None:
+                chamber.latitude = dto.latitude
+            if dto.longitude is not None:
+                chamber.longitude = dto.longitude
             if dto.is_active is not None:
                 chamber.is_active = dto.is_active
 
@@ -59,5 +67,7 @@ class UpdateChamberUseCase:
             "name": saved.name,
             "address": saved.address,
             "phone": saved.phone,
+            "latitude": float(saved.latitude) if saved.latitude is not None else None,
+            "longitude": float(saved.longitude) if saved.longitude is not None else None,
             "is_active": saved.is_active,
         }

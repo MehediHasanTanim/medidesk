@@ -49,7 +49,7 @@ class UserListView(APIView):
     @extend_schema(
         tags=["users"],
         summary="List all staff users",
-        description="Returns all users, optionally filtered by is_active. Admin only.",
+        description="Returns paginated users, filterable by is_active and searchable by name/username/email. Admin only.",
     )
     def get(self, request: Request) -> Response:
         is_active = request.query_params.get("is_active")
@@ -59,21 +59,43 @@ class UserListView(APIView):
         elif is_active == "false":
             filter_active = False
 
-        with DjangoUnitOfWork() as uow:
-            users = uow.users.list_all(is_active=filter_active)
+        search = request.query_params.get("search", "").strip() or None
+        ordering = request.query_params.get("ordering", "").strip() or None
 
-        return Response([
-            {
-                "id": str(u.id),
-                "username": u.username,
-                "full_name": u.full_name,
-                "email": u.email,
-                "role": u.role.value,
-                "chamber_ids": [str(c) for c in u.chamber_ids],
-                "is_active": u.is_active,
-            }
-            for u in users
-        ])
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+            page_size = min(100, max(1, int(request.query_params.get("page_size", 20))))
+        except ValueError:
+            page, page_size = 1, 20
+
+        with DjangoUnitOfWork() as uow:
+            total, users = uow.users.list_all(
+                is_active=filter_active,
+                search=search,
+                page=page,
+                page_size=page_size,
+                ordering=ordering,
+            )
+
+        import math
+        return Response({
+            "count": total,
+            "total_pages": math.ceil(total / page_size) if page_size else 1,
+            "page": page,
+            "page_size": page_size,
+            "results": [
+                {
+                    "id": str(u.id),
+                    "username": u.username,
+                    "full_name": u.full_name,
+                    "email": u.email,
+                    "role": u.role.value,
+                    "chamber_ids": [str(c) for c in u.chamber_ids],
+                    "is_active": u.is_active,
+                }
+                for u in users
+            ],
+        })
 
     @extend_schema(
         tags=["users"],
