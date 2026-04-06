@@ -16,13 +16,8 @@ class RegisterPatientUseCase:
         phone = PhoneNumber(dto.phone)
 
         with self._uow:
-            existing = self._uow.patients.get_by_phone(phone)
-            if existing:
-                raise ValueError(
-                    f"Patient with phone {dto.phone} already exists "
-                    f"(Patient ID: {existing.patient_id})"
-                )
-
+            # Phone uniqueness is intentionally not enforced — multiple patients
+            # (e.g. children) may share the same contact number.
             dob = datetime.strptime(dto.date_of_birth, "%Y-%m-%d").date() if dto.date_of_birth else None
             patient_id = self._next_patient_id()
 

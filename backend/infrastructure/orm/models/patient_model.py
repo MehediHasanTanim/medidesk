@@ -9,7 +9,7 @@ class PatientModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient_id = models.CharField(max_length=20, unique=True, db_index=True)
     full_name = models.CharField(max_length=255, db_index=True)
-    phone = models.CharField(max_length=20, unique=True, db_index=True)
+    phone = models.CharField(max_length=20, db_index=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
     address = models.TextField()
     date_of_birth = models.DateField(null=True, blank=True)

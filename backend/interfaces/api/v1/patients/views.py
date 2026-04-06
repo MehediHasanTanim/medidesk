@@ -25,12 +25,14 @@ class PatientRegistrationView(APIView):
     @extend_schema(
         tags=["patients"],
         summary="Register a new patient",
-        description="Creates a new patient record. Phone number must be unique. Returns the created patient with auto-generated MED-XXXXX ID.",
+        description=(
+            "Creates a new patient record with an auto-generated MED-XXXXX ID. "
+            "Phone numbers are not unique — multiple patients (e.g. siblings) may share the same number."
+        ),
         request=RegisterPatientSerializer,
         responses={
             201: PatientResponseSerializer,
             400: OpenApiResponse(description="Validation error"),
-            409: OpenApiResponse(description="Patient with this phone already exists"),
         },
     )
     def post(self, request: Request) -> Response:

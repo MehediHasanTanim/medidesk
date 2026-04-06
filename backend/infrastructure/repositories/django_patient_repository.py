@@ -19,10 +19,10 @@ class DjangoPatientRepository(IPatientRepository):
             return None
 
     def get_by_phone(self, phone: PhoneNumber) -> Optional[Patient]:
-        try:
-            return PatientMapper.to_domain(PatientModel.objects.get(phone=str(phone)))
-        except PatientModel.DoesNotExist:
-            return None
+        """Returns the first patient with this phone number, or None.
+        Phone is no longer unique — multiple patients (e.g. siblings) may share a number."""
+        m = PatientModel.objects.filter(phone=str(phone)).first()
+        return PatientMapper.to_domain(m) if m else None
 
     def get_by_patient_code(self, code: str) -> Optional[Patient]:
         try:

@@ -20,15 +20,8 @@ class UpdatePatientUseCase:
             if dto.full_name is not None:
                 patient.full_name = dto.full_name.strip()
             if dto.phone is not None:
-                new_phone = PhoneNumber(dto.phone)
-                # Ensure phone is not taken by another patient
-                existing = self._uow.patients.get_by_phone(new_phone)
-                if existing and str(existing.id) != dto.patient_id:
-                    raise ValueError(
-                        f"Phone {dto.phone} is already registered "
-                        f"to patient {existing.patient_id}"
-                    )
-                patient.phone = new_phone
+                # Phone is not unique — multiple patients (e.g. children) may share a number.
+                patient.phone = PhoneNumber(dto.phone)
             if dto.gender is not None:
                 patient.gender = dto.gender
             if dto.address is not None:
