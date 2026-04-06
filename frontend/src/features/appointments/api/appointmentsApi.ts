@@ -11,18 +11,57 @@ export interface BookAppointmentPayload {
 
 export interface AppointmentResponse {
   id: string;
+  patient_id: string;
   patient_name: string;
   patient_phone: string;
+  doctor_id: string;
+  doctor_name: string;
+  chamber_id: string | null;
   scheduled_at: string;
   appointment_type: string;
   status: string;
   token_number: number | null;
+  notes: string;
+}
+
+/** Shape returned by GET /appointments/ results array */
+export interface AppointmentListItem {
+  id: string;
+  patient_id: string;
+  patient_name: string;
+  patient_phone: string;
+  doctor_id: string;
+  doctor_name: string;
+  chamber_id: string | null;
+  scheduled_at: string;
+  appointment_type: string;
+  status: string;
+  token_number: number | null;
+  notes: string;
+}
+
+export interface AppointmentListResponse {
+  count: number;
+  limit: number;
+  offset: number;
+  results: AppointmentListItem[];
+}
+
+export interface ListAppointmentsParams {
+  date?: string;
+  patient_id?: string;
+  doctor_id?: string;
+  status?: AppointmentStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface QueueItem {
   id: string;
   token_number: number | null;
   patient_id: string;
+  patient_name: string;
+  patient_phone: string;
   scheduled_at: string;
   appointment_type: string;
   status: string;
@@ -45,6 +84,12 @@ export type AppointmentStatus =
   | "no_show";
 
 export const appointmentsApi = {
+  /** GET /appointments/ — paginated list with optional filters */
+  list: (params: ListAppointmentsParams = {}) =>
+    apiClient
+      .get<AppointmentListResponse>("/appointments/", { params })
+      .then((r) => r.data),
+
   book: (payload: BookAppointmentPayload) =>
     apiClient.post<AppointmentResponse>("/appointments/", payload).then((r) => r.data),
 
