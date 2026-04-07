@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/prescriptions", label: "Rx Approvals", icon: "💊", roles: ["doctor"] },
   { path: "/users",        label: "Users",        icon: "👥", roles: ["super_admin", "admin"] },
   { path: "/chambers",     label: "Chambers",     icon: "🏥", roles: ["super_admin", "admin"] },
+  { path: "/doctors",      label: "Doctors",      icon: "👨‍⚕️", roles: ["super_admin", "admin"] },
 ];
 
 interface Props {
