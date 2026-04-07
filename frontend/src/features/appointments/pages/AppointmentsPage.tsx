@@ -10,8 +10,8 @@ import {
   type BookAppointmentPayload,
   type UpdateAppointmentPayload,
 } from "@/features/appointments/api/appointmentsApi";
-import { usersApi, type DoctorOption } from "@/features/users/api/usersApi";
 import { chambersApi } from "@/features/chambers/api/chambersApi";
+import { specialitiesApi, doctorProfilesApi, type DoctorProfile } from "@/features/doctors/api/doctorsApi";
 import apiClient from "@/shared/lib/apiClient";
 
 const PAGE_LIMIT = 20;
@@ -45,6 +45,7 @@ function BookModal({
     full_name: string;
     patient_id: string;
   } | null>(null);
+  const [specialityId, setSpecialityId] = useState("");
   const [doctorId, setDoctorId] = useState("");
   const [chamberId, setChamberId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
@@ -61,10 +62,16 @@ function BookModal({
     enabled: patientSearch.length > 1,
   });
 
-  const { data: doctors } = useQuery({
-    queryKey: ["doctors"],
-    queryFn: usersApi.doctors,
+  const { data: specialities = [] } = useQuery({
+    queryKey: ["specialities"],
+    queryFn: () => specialitiesApi.list(true),
     enabled: needsDoctorSelect,
+  });
+
+  const { data: doctors = [], isFetching: doctorsFetching } = useQuery({
+    queryKey: ["doctors-by-speciality", specialityId],
+    queryFn: () => doctorProfilesApi.list({ speciality_id: specialityId, is_available: true }),
+    enabled: needsDoctorSelect && !!specialityId,
   });
 
   const { data: chambersData } = useQuery({
@@ -238,24 +245,54 @@ function BookModal({
           )}
         </div>
 
-        {/* Doctor — only for non-clinical staff */}
+        {/* Speciality → Doctor cascade — only for non-clinical staff */}
         {needsDoctorSelect && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Doctor</label>
-            <select
-              value={doctorId}
-              onChange={(e) => setDoctorId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Select doctor…</option>
-              {doctors?.map((d: DoctorOption) => (
-                <option key={d.id} value={d.id}>
-                  {d.full_name} (
-                  {d.role === "assistant_doctor" ? "Asst. Doctor" : "Doctor"})
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Speciality</label>
+              <select
+                value={specialityId}
+                onChange={(e) => {
+                  setSpecialityId(e.target.value);
+                  setDoctorId("");
+                }}
+                style={inputStyle}
+              >
+                <option value="">Select speciality…</option>
+                {specialities.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Doctor</label>
+              <select
+                value={doctorId}
+                onChange={(e) => setDoctorId(e.target.value)}
+                disabled={!specialityId || doctorsFetching}
+                style={{
+                  ...inputStyle,
+                  background: !specialityId ? colors.bg : colors.white,
+                  color: !specialityId ? colors.textMuted : colors.text,
+                }}
+              >
+                <option value="">
+                  {!specialityId
+                    ? "Select a speciality first…"
+                    : doctorsFetching
+                    ? "Loading…"
+                    : doctors.length === 0
+                    ? "No available doctors"
+                    : "Select doctor…"}
                 </option>
-              ))}
-            </select>
-          </div>
+                {doctors.map((d: DoctorProfile) => (
+                  <option key={d.user_id} value={d.user_id}>
+                    {d.full_name} · {d.role === "assistant_doctor" ? "Asst. Doctor" : "Doctor"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
         )}
 
         {/* Chamber (optional) */}
@@ -397,6 +434,7 @@ function EditModal({
   };
 
   const [doctorId, setDoctorId] = useState(appointment.doctor_id);
+  const [specialityId, setSpecialityId] = useState("");
   const [chamberId, setChamberId] = useState(appointment.chamber_id ?? "");
   const [scheduledAt, setScheduledAt] = useState(toLocalDt(appointment.scheduled_at));
   const [type, setType] = useState<"new" | "follow_up" | "walk_in">(
@@ -405,10 +443,18 @@ function EditModal({
   const [notes, setNotes] = useState(appointment.notes);
   const [error, setError] = useState("");
 
-  const { data: doctors } = useQuery({
-    queryKey: ["doctors"],
-    queryFn: usersApi.doctors,
+  const { data: specialities = [] } = useQuery({
+    queryKey: ["specialities"],
+    queryFn: () => specialitiesApi.list(true),
     enabled: canChangeDr,
+    staleTime: 0,
+  });
+
+  const { data: doctors = [], isFetching: doctorsFetching } = useQuery({
+    queryKey: ["doctors-by-speciality", specialityId],
+    queryFn: () => doctorProfilesApi.list({ speciality_id: specialityId, is_available: true }),
+    enabled: canChangeDr && !!specialityId,
+    staleTime: 0,
   });
 
   const { data: chambersData } = useQuery({
@@ -499,24 +545,54 @@ function EditModal({
           Patient: <strong>{appointment.patient_name}</strong> · {appointment.patient_phone}
         </p>
 
-        {/* Doctor — only for non-clinical staff */}
+        {/* Speciality → Doctor cascade — only for non-clinical staff */}
         {canChangeDr && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Doctor</label>
-            <select
-              value={doctorId}
-              onChange={(e) => setDoctorId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Select doctor…</option>
-              {doctors?.map((d: DoctorOption) => (
-                <option key={d.id} value={d.id}>
-                  {d.full_name} (
-                  {d.role === "assistant_doctor" ? "Asst. Doctor" : "Doctor"})
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Speciality</label>
+              <select
+                value={specialityId}
+                onChange={(e) => {
+                  setSpecialityId(e.target.value);
+                  setDoctorId("");
+                }}
+                style={inputStyle}
+              >
+                <option value="">Select speciality…</option>
+                {specialities.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Doctor</label>
+              <select
+                value={doctorId}
+                onChange={(e) => setDoctorId(e.target.value)}
+                disabled={!specialityId || doctorsFetching}
+                style={{
+                  ...inputStyle,
+                  background: !specialityId ? colors.bg : colors.white,
+                  color: !specialityId ? colors.textMuted : colors.text,
+                }}
+              >
+                <option value="">
+                  {!specialityId
+                    ? "Select a speciality first…"
+                    : doctorsFetching
+                    ? "Loading…"
+                    : doctors.length === 0
+                    ? "No available doctors"
+                    : "Select doctor…"}
                 </option>
-              ))}
-            </select>
-          </div>
+                {doctors.map((d: DoctorProfile) => (
+                  <option key={d.user_id} value={d.user_id}>
+                    {d.full_name} · {d.role === "assistant_doctor" ? "Asst. Doctor" : "Doctor"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
         )}
 
         {/* Chamber */}
