@@ -795,6 +795,7 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
             : undefined,
         search: debouncedSearch || undefined,
       }),
+    staleTime: 0,
   });
 
   const schedule = (d: DoctorProfile) => {
@@ -1043,6 +1044,7 @@ function SpecialitiesTab() {
   const { data: specialities = [], isLoading } = useQuery({
     queryKey: ["specialities", "all"],
     queryFn: () => specialitiesApi.list(false),
+    staleTime: 0,
   });
 
   const deleteMutation = useMutation({
@@ -1253,6 +1255,7 @@ export default function DoctorsPage() {
   const { data: specialities = [] } = useQuery({
     queryKey: ["specialities"],
     queryFn: () => specialitiesApi.list(true),
+    staleTime: 0,
   });
 
   const tabStyle = (tab: Tab) => ({
