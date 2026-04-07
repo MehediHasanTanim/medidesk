@@ -69,7 +69,7 @@ function PrescriptionRow({ rx, onApprove }: { rx: PendingPrescription; onApprove
                 >
                   <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>{item.medicine_name}</div>
                   <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
-                    {item.dosage} · {item.route}
+                    {item.dosage_display} · {item.route}
                     {item.instructions && ` · ${item.instructions}`}
                   </div>
                 </div>

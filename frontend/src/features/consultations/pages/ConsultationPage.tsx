@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
@@ -10,8 +10,14 @@ import {
   type VitalsPayload,
   type UpdateConsultationPayload,
 } from "@/features/consultations/api/consultationsApi";
+import {
+  prescriptionsApi,
+  type PrescriptionItemPayload,
+  type PrescriptionDetail,
+} from "@/features/prescriptions/api/prescriptionsApi";
+import { medicinesApi, type MedicineSearchResult } from "@/features/medicines/api/medicinesApi";
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -44,6 +50,8 @@ const cardStyle: React.CSSProperties = {
   marginBottom: 20,
 };
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function Field({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
@@ -75,17 +83,12 @@ function VitalsPill({ label, value }: { label: string; value: string | number | 
 
 // ── Vitals form ───────────────────────────────────────────────────────────────
 
-function VitalsForm({
-  consultationId,
-  initial,
-  onSaved,
-}: {
+function VitalsForm({ consultationId, initial, onSaved }: {
   consultationId: string;
   initial: Consultation["vitals"];
   onSaved: () => void;
 }) {
   const { toast, show: showToast, dismiss } = useToast();
-
   const [form, setForm] = useState<VitalsPayload>({
     bp_systolic: initial?.bp_systolic ?? null,
     bp_diastolic: initial?.bp_diastolic ?? null,
@@ -99,10 +102,7 @@ function VitalsForm({
   const mutation = useMutation({
     mutationFn: (payload: VitalsPayload) =>
       consultationsApi.updateVitals(consultationId, payload),
-    onSuccess: () => {
-      showToast("Vitals saved", "success");
-      onSaved();
-    },
+    onSuccess: () => { showToast("Vitals saved", "success"); onSaved(); },
     onError: () => showToast("Failed to save vitals", "error"),
   });
 
@@ -117,51 +117,17 @@ function VitalsForm({
     <>
       <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismiss} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-        {/* BP row */}
-        <div>
-          <label style={labelStyle}>BP Systolic</label>
-          <input type="number" placeholder="mmHg" style={inputStyle} {...field("bp_systolic")} />
-        </div>
-        <div>
-          <label style={labelStyle}>BP Diastolic</label>
-          <input type="number" placeholder="mmHg" style={inputStyle} {...field("bp_diastolic")} />
-        </div>
-        <div>
-          <label style={labelStyle}>Pulse</label>
-          <input type="number" placeholder="bpm" style={inputStyle} {...field("pulse")} />
-        </div>
-        <div>
-          <label style={labelStyle}>Temp (°C)</label>
-          <input type="number" step="0.1" placeholder="°C" style={inputStyle} {...field("temperature")} />
-        </div>
-        <div>
-          <label style={labelStyle}>Weight (kg)</label>
-          <input type="number" step="0.1" placeholder="kg" style={inputStyle} {...field("weight")} />
-        </div>
-        <div>
-          <label style={labelStyle}>Height (cm)</label>
-          <input type="number" step="0.1" placeholder="cm" style={inputStyle} {...field("height")} />
-        </div>
-        <div>
-          <label style={labelStyle}>SpO₂ (%)</label>
-          <input type="number" placeholder="%" style={inputStyle} {...field("spo2")} />
-        </div>
+        <div><label style={labelStyle}>BP Systolic</label><input type="number" placeholder="mmHg" style={inputStyle} {...field("bp_systolic")} /></div>
+        <div><label style={labelStyle}>BP Diastolic</label><input type="number" placeholder="mmHg" style={inputStyle} {...field("bp_diastolic")} /></div>
+        <div><label style={labelStyle}>Pulse</label><input type="number" placeholder="bpm" style={inputStyle} {...field("pulse")} /></div>
+        <div><label style={labelStyle}>Temp (°C)</label><input type="number" step="0.1" placeholder="°C" style={inputStyle} {...field("temperature")} /></div>
+        <div><label style={labelStyle}>Weight (kg)</label><input type="number" step="0.1" placeholder="kg" style={inputStyle} {...field("weight")} /></div>
+        <div><label style={labelStyle}>Height (cm)</label><input type="number" step="0.1" placeholder="cm" style={inputStyle} {...field("height")} /></div>
+        <div><label style={labelStyle}>SpO₂ (%)</label><input type="number" placeholder="%" style={inputStyle} {...field("spo2")} /></div>
       </div>
       <div style={{ marginTop: 14, textAlign: "right" }}>
-        <button
-          onClick={() => mutation.mutate(form)}
-          disabled={mutation.isPending}
-          style={{
-            padding: "8px 22px",
-            background: colors.primary,
-            color: colors.white,
-            border: "none",
-            borderRadius: radius.md,
-            cursor: "pointer",
-            fontSize: font.base,
-            fontWeight: 600,
-          }}
-        >
+        <button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}
+          style={{ padding: "8px 22px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600 }}>
           {mutation.isPending ? "Saving…" : "Save Vitals"}
         </button>
       </div>
@@ -171,17 +137,12 @@ function VitalsForm({
 
 // ── Notes form ────────────────────────────────────────────────────────────────
 
-function NotesForm({
-  consultationId,
-  initial,
-  onSaved,
-}: {
+function NotesForm({ consultationId, initial, onSaved }: {
   consultationId: string;
   initial: Consultation;
   onSaved: () => void;
 }) {
   const { toast, show: showToast, dismiss } = useToast();
-
   const [form, setForm] = useState<UpdateConsultationPayload>({
     chief_complaints: initial.chief_complaints,
     clinical_findings: initial.clinical_findings,
@@ -192,10 +153,7 @@ function NotesForm({
   const mutation = useMutation({
     mutationFn: (payload: UpdateConsultationPayload) =>
       consultationsApi.update(consultationId, payload),
-    onSuccess: () => {
-      showToast("Notes saved", "success");
-      onSaved();
-    },
+    onSuccess: () => { showToast("Notes saved", "success"); onSaved(); },
     onError: () => showToast("Failed to save notes", "error"),
   });
 
@@ -211,38 +169,14 @@ function NotesForm({
     <>
       <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismiss} />
       <div style={{ display: "grid", gap: 14 }}>
-        <div>
-          <label style={labelStyle}>Chief Complaints *</label>
-          <textarea {...ta("chief_complaints")} />
-        </div>
-        <div>
-          <label style={labelStyle}>Clinical Findings</label>
-          <textarea {...ta("clinical_findings")} />
-        </div>
-        <div>
-          <label style={labelStyle}>Diagnosis</label>
-          <textarea {...ta("diagnosis")} rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: font.family, borderColor: form.diagnosis ? colors.border : colors.border }} />
-        </div>
-        <div>
-          <label style={labelStyle}>Notes / Instructions</label>
-          <textarea {...ta("notes")} />
-        </div>
+        <div><label style={labelStyle}>Chief Complaints *</label><textarea {...ta("chief_complaints")} /></div>
+        <div><label style={labelStyle}>Clinical Findings</label><textarea {...ta("clinical_findings")} /></div>
+        <div><label style={labelStyle}>Diagnosis</label><textarea {...ta("diagnosis")} rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }} /></div>
+        <div><label style={labelStyle}>Notes / Instructions</label><textarea {...ta("notes")} /></div>
       </div>
       <div style={{ marginTop: 14, textAlign: "right" }}>
-        <button
-          onClick={() => mutation.mutate(form)}
-          disabled={mutation.isPending}
-          style={{
-            padding: "8px 22px",
-            background: colors.primary,
-            color: colors.white,
-            border: "none",
-            borderRadius: radius.md,
-            cursor: "pointer",
-            fontSize: font.base,
-            fontWeight: 600,
-          }}
-        >
+        <button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}
+          style={{ padding: "8px 22px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600 }}>
           {mutation.isPending ? "Saving…" : "Save Notes"}
         </button>
       </div>
@@ -250,13 +184,335 @@ function NotesForm({
   );
 }
 
+// ── Prescription read-only display ────────────────────────────────────────────
+
+function PrescriptionView({ rx }: { rx: PrescriptionDetail }) {
+  const STATUS_STYLES: Record<string, { bg: string; color: string; border: string }> = {
+    active:   { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+    approved: { bg: "#eff6ff", color: colors.primary, border: "#bfdbfe" },
+    draft:    { bg: "#fef9c3", color: "#92400e", border: "#fde68a" },
+  };
+  const ss = STATUS_STYLES[rx.status] ?? STATUS_STYLES.active;
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <span style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, padding: "3px 12px", borderRadius: 999, fontSize: font.sm, fontWeight: 600, textTransform: "capitalize" }}>
+          {rx.status}
+        </span>
+        {rx.follow_up_date && (
+          <span style={{ fontSize: font.sm, color: colors.primary }}>
+            Follow-up: {rx.follow_up_date}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {rx.items.map((item, i) => (
+          <div key={i} style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "10px 14px" }}>
+            <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>{item.medicine_name}</div>
+            <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 3 }}>
+              <span style={{ fontWeight: 500, color: colors.text }}>{item.dosage_display}</span>
+              {" · "}{item.route}
+              {item.instructions && <span> · {item.instructions}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Prescription create form ──────────────────────────────────────────────────
+
+interface DraftItem extends PrescriptionItemPayload {
+  _key: number; // local list key
+}
+
+const ROUTES = ["oral", "sublingual", "topical", "inhaled", "iv", "im", "sc", "rectal", "nasal", "ophthalmic"];
+
+function MedicineSearchInput({ onSelect }: { onSelect: (m: MedicineSearchResult) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: results = [] } = useQuery({
+    queryKey: ["medicine-search", q],
+    queryFn: () => medicinesApi.search(q),
+    enabled: q.length >= 2,
+    staleTime: 30_000,
+  });
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <label style={labelStyle}>Search Medicine</label>
+      <input
+        type="text"
+        placeholder="Type brand name or generic (min 2 chars)…"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        style={inputStyle}
+        autoComplete="off"
+      />
+      {open && q.length >= 2 && results.length > 0 && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
+          background: colors.white, border: `1px solid ${colors.border}`,
+          borderRadius: radius.md, boxShadow: shadow.md, maxHeight: 200, overflowY: "auto",
+          marginTop: 2,
+        }}>
+          {results.map((m) => (
+            <div
+              key={m.id}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onSelect(m);
+                setQ("");
+                setOpen(false);
+              }}
+              style={{ padding: "9px 14px", cursor: "pointer", borderBottom: `1px solid ${colors.borderLight}`, fontSize: font.base }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = colors.bg)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = colors.white)}
+            >
+              <span style={{ fontWeight: 600, color: colors.text }}>{m.brand_name}</span>
+              <span style={{ color: colors.textMuted, fontSize: font.sm }}> {m.strength} · {m.form} · {m.manufacturer}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && q.length >= 2 && results.length === 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "10px 14px", fontSize: font.sm, color: colors.textMuted, marginTop: 2 }}>
+          No medicines found
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PrescriptionCreateForm({ consultationId, patientId, onCreated }: {
+  consultationId: string;
+  patientId: string;
+  onCreated: () => void;
+}) {
+  const { toast, show: showToast, dismiss } = useToast();
+  const [items, setItems] = useState<DraftItem[]>([]);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [error, setError] = useState("");
+  const [editingItem, setEditingItem] = useState<Partial<DraftItem> | null>(null);
+  const keyRef = useRef(0);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      prescriptionsApi.create({
+        consultation_id: consultationId,
+        patient_id: patientId,
+        items: items.map(({ _key, ...rest }) => rest),
+        follow_up_date: followUpDate || undefined,
+      }),
+    onSuccess: () => {
+      showToast("Prescription created", "success");
+      onCreated();
+    },
+    onError: (e: any) =>
+      setError(e.response?.data?.error ?? "Failed to create prescription"),
+  });
+
+  const handleSelectMedicine = (m: MedicineSearchResult) => {
+    setEditingItem({
+      _key: ++keyRef.current,
+      medicine_id: m.id,
+      medicine_name: `${m.brand_name} ${m.strength}`,
+      morning: "",
+      afternoon: "",
+      evening: "",
+      duration_days: 7,
+      route: "oral",
+      instructions: "",
+    });
+  };
+
+  const handleAddItem = () => {
+    if (!editingItem) return;
+    if (!editingItem.medicine_id) return setError("Select a medicine");
+    if (!editingItem.morning && !editingItem.afternoon && !editingItem.evening)
+      return setError("Enter at least one dosage (morning/afternoon/evening)");
+    setItems((prev) => [...prev, editingItem as DraftItem]);
+    setEditingItem(null);
+    setError("");
+  };
+
+  return (
+    <>
+      <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismiss} />
+
+      {error && (
+        <div style={{ background: "#fef2f2", color: colors.danger, border: "1px solid #fecaca", borderRadius: radius.md, padding: "8px 12px", marginBottom: 12, fontSize: font.sm }}>
+          {error}
+        </div>
+      )}
+
+      {/* Medicine search */}
+      <div style={{ marginBottom: 16 }}>
+        <MedicineSearchInput onSelect={handleSelectMedicine} />
+      </div>
+
+      {/* Item editor — shown after selecting a medicine */}
+      {editingItem && (
+        <div style={{ background: colors.primaryLight, border: `1px solid #bfdbfe`, borderRadius: radius.md, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, color: colors.text, marginBottom: 12, fontSize: font.base }}>
+            {editingItem.medicine_name}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={labelStyle}>Morning</label>
+              <input type="text" placeholder="e.g. 1" style={inputStyle}
+                value={editingItem.morning ?? ""}
+                onChange={(e) => setEditingItem((f) => ({ ...f!, morning: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>Afternoon</label>
+              <input type="text" placeholder="e.g. 0" style={inputStyle}
+                value={editingItem.afternoon ?? ""}
+                onChange={(e) => setEditingItem((f) => ({ ...f!, afternoon: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>Evening</label>
+              <input type="text" placeholder="e.g. 1" style={inputStyle}
+                value={editingItem.evening ?? ""}
+                onChange={(e) => setEditingItem((f) => ({ ...f!, evening: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelStyle}>Duration (days)</label>
+              <input type="number" min={1} style={inputStyle}
+                value={editingItem.duration_days ?? 7}
+                onChange={(e) => setEditingItem((f) => ({ ...f!, duration_days: Number(e.target.value) }))} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={labelStyle}>Route</label>
+              <select style={{ ...inputStyle, background: colors.white }}
+                value={editingItem.route ?? "oral"}
+                onChange={(e) => setEditingItem((f) => ({ ...f!, route: e.target.value }))}>
+                {ROUTES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Instructions</label>
+              <input type="text" placeholder="e.g. After meal, with water" style={inputStyle}
+                value={editingItem.instructions ?? ""}
+                onChange={(e) => setEditingItem((f) => ({ ...f!, instructions: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button onClick={() => setEditingItem(null)}
+              style={{ padding: "6px 16px", background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.sm }}>
+              Cancel
+            </button>
+            <button onClick={handleAddItem}
+              style={{ padding: "6px 16px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.sm, fontWeight: 600 }}>
+              Add to Prescription
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Items list */}
+      {items.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: font.sm, fontWeight: 600, color: colors.textMuted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Items ({items.length})
+          </div>
+          {items.map((item) => (
+            <div key={item._key} style={{ display: "flex", alignItems: "center", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "8px 12px", marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>{item.medicine_name}</div>
+                <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
+                  {item.morning}+{item.afternoon}+{item.evening} × {item.duration_days} days · {item.route}
+                  {item.instructions && ` · ${item.instructions}`}
+                </div>
+              </div>
+              <button
+                onClick={() => setItems((prev) => prev.filter((i) => i._key !== item._key))}
+                style={{ background: "none", border: "none", color: colors.danger, cursor: "pointer", fontSize: font.lg, lineHeight: 1, padding: "0 4px" }}>
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Follow-up date + submit */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Follow-up Date (optional)</label>
+          <input type="date" style={inputStyle} value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} />
+        </div>
+        <button
+          onClick={() => {
+            setError("");
+            if (items.length === 0) return setError("Add at least one medicine");
+            createMutation.mutate();
+          }}
+          disabled={createMutation.isPending || items.length === 0}
+          style={{
+            padding: "9px 22px", background: colors.primary, color: colors.white,
+            border: "none", borderRadius: radius.md, cursor: items.length === 0 ? "not-allowed" : "pointer",
+            fontSize: font.base, fontWeight: 600, opacity: items.length === 0 ? 0.5 : 1, flexShrink: 0,
+          }}>
+          {createMutation.isPending ? "Saving…" : "Save Prescription"}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── Prescription section (wrapper) ────────────────────────────────────────────
+
+function PrescriptionSection({ consultation }: { consultation: Consultation }) {
+  const qc = useQueryClient();
+
+  const { data: rx, isLoading, error } = useQuery<PrescriptionDetail | null>({
+    queryKey: ["prescription-by-consultation", consultation.id],
+    queryFn: () =>
+      prescriptionsApi
+        .getByConsultation(consultation.id)
+        .catch((e) => (e?.response?.status === 404 ? null : Promise.reject(e))),
+    staleTime: 0,
+  });
+
+  const handleCreated = () => {
+    qc.invalidateQueries({ queryKey: ["prescription-by-consultation", consultation.id] });
+  };
+
+  if (isLoading) return <div style={{ color: colors.textMuted, fontSize: font.sm }}>Loading prescription…</div>;
+  if (error) return <div style={{ color: colors.danger, fontSize: font.sm }}>Failed to load prescription.</div>;
+
+  if (rx) return <PrescriptionView rx={rx} />;
+
+  // No prescription yet — show create form only on non-completed or completed consultations
+  return (
+    <PrescriptionCreateForm
+      consultationId={consultation.id}
+      patientId={consultation.patient_id}
+      onCreated={handleCreated}
+    />
+  );
+}
+
 // ── Complete modal ────────────────────────────────────────────────────────────
 
-function CompleteModal({
-  consultation,
-  onClose,
-  onCompleted,
-}: {
+function CompleteModal({ consultation, onClose, onCompleted }: {
   consultation: Consultation;
   onClose: () => void;
   onCompleted: () => void;
@@ -268,28 +524,16 @@ function CompleteModal({
 
   const mutation = useMutation({
     mutationFn: () =>
-      consultationsApi.complete(consultation.id, {
-        diagnosis,
-        clinical_findings: clinicalFindings,
-        notes,
-      }),
+      consultationsApi.complete(consultation.id, { diagnosis, clinical_findings: clinicalFindings, notes }),
     onSuccess: onCompleted,
     onError: (e: any) =>
       setError(e.response?.data?.error ?? "Failed to complete consultation"),
   });
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-    }}>
-      <div style={{
-        background: colors.white, borderRadius: radius.lg, boxShadow: shadow.lg,
-        width: "min(580px, 96vw)", maxHeight: "90vh", overflowY: "auto", padding: 28,
-      }}>
-        <h2 style={{ margin: "0 0 6px", fontSize: font.xl, fontWeight: 700, color: colors.text }}>
-          Complete Consultation
-        </h2>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.lg, width: "min(580px, 96vw)", maxHeight: "90vh", overflowY: "auto", padding: 28 }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: font.xl, fontWeight: 700, color: colors.text }}>Complete Consultation</h2>
         <p style={{ margin: "0 0 20px", fontSize: font.sm, color: colors.textMuted }}>
           Review and finalise. <strong>Diagnosis is required.</strong> This action cannot be undone.
         </p>
@@ -302,49 +546,29 @@ function CompleteModal({
 
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>Diagnosis *</label>
-          <textarea
-            value={diagnosis}
-            onChange={(e) => setDiagnosis(e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }}
-            placeholder="Required to complete consultation"
-          />
+          <textarea value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} rows={3}
+            style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }} placeholder="Required to complete consultation" />
         </div>
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>Clinical Findings</label>
-          <textarea
-            value={clinicalFindings}
-            onChange={(e) => setClinicalFindings(e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }}
-          />
+          <textarea value={clinicalFindings} onChange={(e) => setClinicalFindings(e.target.value)} rows={3}
+            style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }} />
         </div>
         <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>Notes / Instructions</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }}
-          />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+            style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }} />
         </div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button
-            onClick={onClose}
-            style={{ padding: "9px 20px", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}
-          >
+          <button onClick={onClose}
+            style={{ padding: "9px 20px", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}>
             Cancel
           </button>
           <button
-            onClick={() => {
-              setError("");
-              if (!diagnosis.trim()) return setError("Diagnosis is required");
-              mutation.mutate();
-            }}
+            onClick={() => { setError(""); if (!diagnosis.trim()) return setError("Diagnosis is required"); mutation.mutate(); }}
             disabled={mutation.isPending}
-            style={{ padding: "9px 22px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600 }}
-          >
+            style={{ padding: "9px 22px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600 }}>
             {mutation.isPending ? "Completing…" : "Complete Consultation"}
           </button>
         </div>
@@ -362,21 +586,12 @@ export default function ConsultationPage() {
   const { toast, show: showToast, dismiss } = useToast();
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
-  const {
-    data: consultation,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery<Consultation | null>({
+  const { data: consultation, isLoading, error, refetch } = useQuery<Consultation | null>({
     queryKey: ["consultation-by-appointment", appointmentId],
     queryFn: () => consultationsApi.getByAppointment(appointmentId!),
     enabled: !!appointmentId,
     staleTime: 0,
   });
-
-  const handleSaved = () => {
-    refetch();
-  };
 
   const handleCompleted = () => {
     setShowCompleteModal(false);
@@ -387,21 +602,11 @@ export default function ConsultationPage() {
   };
 
   if (isLoading) {
-    return (
-      <AppShell>
-        <div style={{ padding: 40, color: colors.textMuted }}>Loading consultation…</div>
-      </AppShell>
-    );
+    return <AppShell><div style={{ padding: 40, color: colors.textMuted }}>Loading consultation…</div></AppShell>;
   }
-
   if (error || consultation === undefined) {
-    return (
-      <AppShell>
-        <div style={{ padding: 40, color: colors.danger }}>Failed to load consultation.</div>
-      </AppShell>
-    );
+    return <AppShell><div style={{ padding: 40, color: colors.danger }}>Failed to load consultation.</div></AppShell>;
   }
-
   if (!consultation) {
     return (
       <AppShell>
@@ -430,51 +635,30 @@ export default function ConsultationPage() {
         />
       )}
 
-      <div style={{ padding: "32px 40px", maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ padding: "32px 40px", maxWidth: 1200, margin: "0 auto" }}>
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-          <button
-            onClick={() => navigate("/queue")}
-            style={{ background: "none", border: "none", color: colors.primary, cursor: "pointer", fontSize: font.base, fontWeight: 500, flexShrink: 0 }}
-          >
+          <button onClick={() => navigate("/queue")}
+            style={{ background: "none", border: "none", color: colors.primary, cursor: "pointer", fontSize: font.base, fontWeight: 500, flexShrink: 0 }}>
             ← Queue
           </button>
           <div style={{ flex: 1 }}>
-            <h1 style={{ margin: 0, fontSize: font.xl, fontWeight: 700, color: colors.text }}>
-              Consultation
-            </h1>
+            <h1 style={{ margin: 0, fontSize: font.xl, fontWeight: 700, color: colors.text }}>Consultation</h1>
             <p style={{ margin: "2px 0 0", fontSize: font.sm, color: colors.textMuted }}>
               Started {consultation.created_at ? new Date(consultation.created_at).toLocaleString("en-BD") : "—"}
             </p>
           </div>
-          {/* Status badge */}
           <span style={{
             background: isCompleted ? "#f0fdf4" : "#fef3c7",
             color: isCompleted ? "#166534" : "#92400e",
             border: `1px solid ${isCompleted ? "#bbf7d0" : "#fde68a"}`,
-            padding: "4px 14px",
-            borderRadius: 999,
-            fontSize: font.sm,
-            fontWeight: 600,
+            padding: "4px 14px", borderRadius: 999, fontSize: font.sm, fontWeight: 600,
           }}>
             {isCompleted ? "✓ Completed" : "In Progress"}
           </span>
-          {/* Complete button */}
           {!isCompleted && (
-            <button
-              onClick={() => setShowCompleteModal(true)}
-              style={{
-                padding: "9px 22px",
-                background: colors.success,
-                color: colors.white,
-                border: "none",
-                borderRadius: radius.md,
-                cursor: "pointer",
-                fontSize: font.base,
-                fontWeight: 600,
-                flexShrink: 0,
-              }}
-            >
+            <button onClick={() => setShowCompleteModal(true)}
+              style={{ padding: "9px 22px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600, flexShrink: 0 }}>
               Complete Consultation
             </button>
           )}
@@ -482,81 +666,77 @@ export default function ConsultationPage() {
 
         {/* ── Completed view ── */}
         {isCompleted ? (
-          <>
-            <div style={cardStyle}>
-              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>
-                Consultation Summary
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-                <div>
-                  <Field label="Chief Complaints" value={consultation.chief_complaints} />
-                  <Field label="Clinical Findings" value={consultation.clinical_findings} />
-                  <Field label="Diagnosis" value={consultation.diagnosis} />
-                  <Field label="Notes" value={consultation.notes} />
-                </div>
-                <div>
-                  {v && (
-                    <>
-                      <div style={labelStyle}>Vitals</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                        {v.bp_display && <VitalsPill label="Blood Pressure" value={v.bp_display} />}
-                        {v.pulse && <VitalsPill label="Pulse" value={`${v.pulse} bpm`} />}
-                        {v.temperature && <VitalsPill label="Temperature" value={`${v.temperature} °C`} />}
-                        {v.spo2 && <VitalsPill label="SpO₂" value={`${v.spo2}%`} />}
-                        {v.weight && <VitalsPill label="Weight" value={`${v.weight} kg`} />}
-                        {v.height && <VitalsPill label="Height" value={`${v.height} cm`} />}
-                        {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
-                      </div>
-                    </>
-                  )}
-                  {consultation.completed_at && (
-                    <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 8 }}>
-                      Completed at: {new Date(consultation.completed_at).toLocaleString("en-BD")}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          /* ── Draft / in-progress view ── */
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            {/* Left: Clinical Notes */}
+            {/* Left: clinical summary */}
             <div style={cardStyle}>
-              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>
-                Clinical Notes
-              </h2>
-              <NotesForm
-                consultationId={consultation.id}
-                initial={consultation}
-                onSaved={handleSaved}
-              />
-            </div>
-
-            {/* Right: Vitals */}
-            <div style={cardStyle}>
-              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>
-                Vitals
-              </h2>
-              {/* Current vitals display */}
-              {v && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                  {v.bp_display && <VitalsPill label="BP" value={v.bp_display} />}
-                  {v.pulse && <VitalsPill label="Pulse" value={`${v.pulse} bpm`} />}
-                  {v.temperature && <VitalsPill label="Temp" value={`${v.temperature}°C`} />}
-                  {v.spo2 && <VitalsPill label="SpO₂" value={`${v.spo2}%`} />}
-                  {v.weight && <VitalsPill label="Weight" value={`${v.weight} kg`} />}
-                  {v.height && <VitalsPill label="Height" value={`${v.height} cm`} />}
-                  {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
+              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Consultation Summary</h2>
+              <Field label="Chief Complaints" value={consultation.chief_complaints} />
+              <Field label="Clinical Findings" value={consultation.clinical_findings} />
+              <Field label="Diagnosis" value={consultation.diagnosis} />
+              <Field label="Notes" value={consultation.notes} />
+              {consultation.completed_at && (
+                <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 8 }}>
+                  Completed: {new Date(consultation.completed_at).toLocaleString("en-BD")}
                 </div>
               )}
-              <VitalsForm
-                consultationId={consultation.id}
-                initial={consultation.vitals}
-                onSaved={handleSaved}
-              />
+            </div>
+
+            {/* Right: vitals + prescription */}
+            <div>
+              {v && (
+                <div style={cardStyle}>
+                  <h2 style={{ margin: "0 0 12px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Vitals</h2>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {v.bp_display && <VitalsPill label="Blood Pressure" value={v.bp_display} />}
+                    {v.pulse && <VitalsPill label="Pulse" value={`${v.pulse} bpm`} />}
+                    {v.temperature && <VitalsPill label="Temperature" value={`${v.temperature} °C`} />}
+                    {v.spo2 && <VitalsPill label="SpO₂" value={`${v.spo2}%`} />}
+                    {v.weight && <VitalsPill label="Weight" value={`${v.weight} kg`} />}
+                    {v.height && <VitalsPill label="Height" value={`${v.height} cm`} />}
+                    {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
+                  </div>
+                </div>
+              )}
+              <div style={cardStyle}>
+                <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
+                <PrescriptionSection consultation={consultation} />
+              </div>
             </div>
           </div>
+        ) : (
+          /* ── Draft / in-progress view ── */
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              {/* Clinical Notes */}
+              <div style={cardStyle}>
+                <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Clinical Notes</h2>
+                <NotesForm consultationId={consultation.id} initial={consultation} onSaved={() => refetch()} />
+              </div>
+
+              {/* Vitals */}
+              <div style={cardStyle}>
+                <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Vitals</h2>
+                {v && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                    {v.bp_display && <VitalsPill label="BP" value={v.bp_display} />}
+                    {v.pulse && <VitalsPill label="Pulse" value={`${v.pulse} bpm`} />}
+                    {v.temperature && <VitalsPill label="Temp" value={`${v.temperature}°C`} />}
+                    {v.spo2 && <VitalsPill label="SpO₂" value={`${v.spo2}%`} />}
+                    {v.weight && <VitalsPill label="Weight" value={`${v.weight} kg`} />}
+                    {v.height && <VitalsPill label="Height" value={`${v.height} cm`} />}
+                    {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
+                  </div>
+                )}
+                <VitalsForm consultationId={consultation.id} initial={consultation.vitals} onSaved={() => refetch()} />
+              </div>
+            </div>
+
+            {/* Prescription — full width below */}
+            <div style={cardStyle}>
+              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
+              <PrescriptionSection consultation={consultation} />
+            </div>
+          </>
         )}
       </div>
     </AppShell>

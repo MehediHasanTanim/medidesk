@@ -1,6 +1,8 @@
 import apiClient from "@/shared/lib/apiClient";
 
-export interface PrescriptionItem {
+// ── Request types ─────────────────────────────────────────────────────────────
+
+export interface PrescriptionItemPayload {
   medicine_id: string;
   medicine_name: string;
   morning: string;
@@ -14,33 +16,45 @@ export interface PrescriptionItem {
 export interface CreatePrescriptionPayload {
   consultation_id: string;
   patient_id: string;
-  items: PrescriptionItem[];
+  items: PrescriptionItemPayload[];
   follow_up_date?: string; // YYYY-MM-DD
 }
 
+// ── Response types ─────────────────────────────────────────────────────────────
+
 export type PrescriptionStatus = "draft" | "active" | "approved";
 
-export interface PrescriptionResponse {
+/** Returned by POST /prescriptions/ */
+export interface CreatePrescriptionResponse {
   prescription_id: string;
   status: PrescriptionStatus;
   item_count: number;
   follow_up_date: string | null;
 }
 
+/** Full structured item — returned by GET endpoints */
+export interface PrescriptionItemDetail {
+  medicine_id: string;
+  medicine_name: string;
+  morning: string;
+  afternoon: string;
+  evening: string;
+  duration_days: number;
+  dosage_display: string; // e.g. "1+0+1 × 7 days"
+  route: string;
+  instructions: string;
+}
+
 export interface PrescriptionDetail {
   prescription_id: string;
   consultation_id: string;
   patient_id: string;
-  status: PrescriptionStatus;
+  prescribed_by_id: string;
   approved_by_id: string | null;
+  status: PrescriptionStatus;
   follow_up_date: string | null;
-  items: Array<{
-    medicine_id: string;
-    medicine_name: string;
-    dosage: string;
-    route: string;
-    instructions: string;
-  }>;
+  created_at: string | null;
+  items: PrescriptionItemDetail[];
 }
 
 export interface PendingPrescription {
@@ -54,20 +68,34 @@ export interface PendingPrescription {
   item_count: number;
 }
 
-export const prescriptionsApi = {
-  create: (payload: CreatePrescriptionPayload) =>
-    apiClient.post<PrescriptionResponse>("/prescriptions/", payload).then((r) => r.data),
+// ── API client ─────────────────────────────────────────────────────────────────
 
+export const prescriptionsApi = {
+  /** POST /prescriptions/ — create a prescription for a consultation. */
+  create: (payload: CreatePrescriptionPayload) =>
+    apiClient
+      .post<CreatePrescriptionResponse>("/prescriptions/", payload)
+      .then((r) => r.data),
+
+  /** GET /prescriptions/<id>/ — retrieve by prescription ID. */
+  get: (prescriptionId: string) =>
+    apiClient
+      .get<PrescriptionDetail>(`/prescriptions/${prescriptionId}/`)
+      .then((r) => r.data),
+
+  /** GET /prescriptions/consultation/<id>/ — fetch prescription for a consultation. */
   getByConsultation: (consultationId: string) =>
     apiClient
       .get<PrescriptionDetail>(`/prescriptions/consultation/${consultationId}/`)
       .then((r) => r.data),
 
-  // Doctor only — list all draft prescriptions awaiting approval
+  /** GET /prescriptions/pending/ — list all draft prescriptions (doctor only). */
   listPending: () =>
-    apiClient.get<PendingPrescription[]>("/prescriptions/pending/").then((r) => r.data),
+    apiClient
+      .get<PendingPrescription[]>("/prescriptions/pending/")
+      .then((r) => r.data),
 
-  // Doctor only — approve a draft prescription from an assistant_doctor
+  /** POST /prescriptions/<id>/approve/ — approve a draft prescription (doctor only). */
   approve: (prescriptionId: string) =>
     apiClient
       .post<{ prescription_id: string; status: string; approved_by_id: string }>(
