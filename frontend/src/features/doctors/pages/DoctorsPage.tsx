@@ -775,6 +775,17 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
   const [editing, setEditing] = useState<DoctorProfile | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast, show: showToast, dismiss } = useToast();
+  const qc = useQueryClient();
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      doctorProfilesApi.update(id, { is_active }),
+    onSuccess: (_, { is_active }) => {
+      qc.invalidateQueries({ queryKey: ["doctor-profiles"] });
+      showToast(is_active ? "Doctor activated" : "Doctor deactivated", is_active ? "success" : "info");
+    },
+    onError: () => showToast("Failed to update status", "error"),
+  });
 
   const handleSearch = (v: string) => {
     setSearch(v);
@@ -1003,21 +1014,41 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
 
                 {/* Actions */}
                 <td style={{ padding: "12px 16px" }}>
-                  <button
-                    onClick={() => setEditing(d)}
-                    style={{
-                      padding: "4px 14px",
-                      background: colors.primaryLight,
-                      color: colors.primary,
-                      border: `1px solid #bfdbfe`,
-                      borderRadius: radius.sm,
-                      cursor: "pointer",
-                      fontSize: font.sm,
-                      fontWeight: 500,
-                    }}
-                  >
-                    Edit
-                  </button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => setEditing(d)}
+                      style={{
+                        padding: "4px 14px",
+                        background: colors.primaryLight,
+                        color: colors.primary,
+                        border: `1px solid #bfdbfe`,
+                        borderRadius: radius.sm,
+                        cursor: "pointer",
+                        fontSize: font.sm,
+                        fontWeight: 500,
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() =>
+                        toggleActiveMutation.mutate({ id: d.id, is_active: !d.is_active })
+                      }
+                      disabled={toggleActiveMutation.isPending}
+                      style={{
+                        padding: "4px 14px",
+                        background: d.is_active ? "#fef2f2" : "#f0fdf4",
+                        color: d.is_active ? colors.danger : colors.success,
+                        border: `1px solid ${d.is_active ? "#fecaca" : "#bbf7d0"}`,
+                        borderRadius: radius.sm,
+                        cursor: "pointer",
+                        fontSize: font.sm,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {d.is_active ? "Deactivate" : "Activate"}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
