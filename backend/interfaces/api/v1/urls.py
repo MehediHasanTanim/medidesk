@@ -34,7 +34,12 @@ from interfaces.api.v1.doctors.views import (
     DoctorProfileListView,
     DoctorProfileDetailView,
 )
-from interfaces.api.v1.consultations.views import StartConsultationView, CompleteConsultationView, UpdateVitalsView
+from interfaces.api.v1.consultations.views import (
+    ConsultationListView,
+    ConsultationDetailView,
+    CompleteConsultationView,
+    UpdateVitalsView,
+)
 from interfaces.api.v1.medicines.views import MedicineSearchView
 from interfaces.api.v1.reports.views import ReportUploadView
 from interfaces.api.v1.prescriptions.views import (
@@ -78,7 +83,8 @@ urlpatterns = [
     path("appointments/<uuid:appointment_id>/status/", AppointmentStatusView.as_view(), name="appointment_status"),
 
     # ── Consultations ─────────────────────────────────────────────────────────
-    path("consultations/", StartConsultationView.as_view(), name="start_consultation"),
+    path("consultations/", ConsultationListView.as_view(), name="consultation_list"),
+    path("consultations/<uuid:consultation_id>/", ConsultationDetailView.as_view(), name="consultation_detail"),
     path("consultations/<uuid:consultation_id>/complete/", CompleteConsultationView.as_view(), name="complete_consultation"),
     path("consultations/<uuid:consultation_id>/vitals/", UpdateVitalsView.as_view(), name="update_vitals"),
 

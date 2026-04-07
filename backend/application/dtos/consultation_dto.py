@@ -24,3 +24,12 @@ class CompleteConsultationDTO:
     weight: Optional[Decimal] = None
     height: Optional[Decimal] = None
     spo2: Optional[int] = None
+
+
+@dataclass
+class UpdateConsultationDTO:
+    consultation_id: str
+    chief_complaints: Optional[str] = None
+    clinical_findings: Optional[str] = None
+    diagnosis: Optional[str] = None
+    notes: Optional[str] = None

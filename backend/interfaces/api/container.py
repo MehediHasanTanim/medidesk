@@ -8,7 +8,10 @@ from infrastructure.services.whatsapp_service import WhatsAppNotificationService
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from infrastructure.repositories.django_doctor_repository import DjangoDoctorRepository
 from application.use_cases.appointment.book_appointment import BookAppointmentUseCase
+from application.use_cases.consultation.start_consultation import StartConsultationUseCase
 from application.use_cases.consultation.complete_consultation import CompleteConsultationUseCase
+from application.use_cases.consultation.get_consultation import GetConsultationUseCase
+from application.use_cases.consultation.update_consultation import UpdateConsultationUseCase
 from application.use_cases.patient.register_patient import RegisterPatientUseCase
 from application.use_cases.patient.update_patient import UpdatePatientUseCase
 from application.use_cases.doctor.manage_speciality import (
@@ -50,8 +53,22 @@ class Container:
         )
 
     @staticmethod
+    def start_consultation() -> StartConsultationUseCase:
+        return StartConsultationUseCase(uow=DjangoUnitOfWork())
+
+    @staticmethod
     def complete_consultation() -> CompleteConsultationUseCase:
         return CompleteConsultationUseCase(uow=DjangoUnitOfWork())
+
+    @staticmethod
+    def get_consultation() -> GetConsultationUseCase:
+        from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
+        return GetConsultationUseCase(repo=DjangoConsultationRepository())
+
+    @staticmethod
+    def update_consultation() -> UpdateConsultationUseCase:
+        from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
+        return UpdateConsultationUseCase(repo=DjangoConsultationRepository())
 
     # ── Doctor / Speciality ───────────────────────────────────────────────────
 
