@@ -44,6 +44,7 @@ from interfaces.api.v1.medicines.views import MedicineSearchView
 from interfaces.api.v1.reports.views import ReportUploadView
 from interfaces.api.v1.prescriptions.views import (
     PrescriptionView,
+    PrescriptionDetailView,
     PrescriptionByConsultationView,
     ApprovePrescriptionView,
     PendingPrescriptionsView,
@@ -90,6 +91,7 @@ urlpatterns = [
 
     # ── Prescriptions ─────────────────────────────────────────────────────────
     path("prescriptions/", PrescriptionView.as_view(), name="create_prescription"),
+    path("prescriptions/<uuid:prescription_id>/", PrescriptionDetailView.as_view(), name="prescription_detail"),
     path("prescriptions/pending/", PendingPrescriptionsView.as_view(), name="pending_prescriptions"),
     path("prescriptions/<uuid:prescription_id>/approve/", ApprovePrescriptionView.as_view(), name="approve_prescription"),
     path("prescriptions/consultation/<uuid:consultation_id>/", PrescriptionByConsultationView.as_view(), name="prescription_by_consultation"),
