@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5175,
+    port: 5177,
     host: true, // bind to 0.0.0.0 so Docker exposes the port
     proxy: {
       "/api": {
