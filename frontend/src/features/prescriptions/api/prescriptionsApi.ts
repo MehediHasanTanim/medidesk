@@ -61,7 +61,9 @@ export interface PendingPrescription {
   prescription_id: string;
   consultation_id: string;
   patient_id: string;
+  patient_name: string;
   prescribed_by_id: string;
+  prescribed_by_name: string;
   status: "draft";
   follow_up_date: string | null;
   created_at: string | null;

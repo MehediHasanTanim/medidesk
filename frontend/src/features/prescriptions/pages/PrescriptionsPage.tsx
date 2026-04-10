@@ -18,15 +18,14 @@ function PrescriptionRow({ rx, onApprove }: { rx: PendingPrescription; onApprove
       <div style={{ display: "flex", alignItems: "center", padding: "16px 20px", gap: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text }}>
-            {rx.item_count} medication{rx.item_count !== 1 ? "s" : ""}
+            {rx.patient_name}
           </div>
-          <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2, fontFamily: "monospace" }}>
-            Patient: {rx.patient_id}
-            {rx.follow_up_date && (
-              <span style={{ fontFamily: "inherit" }}> · Follow-up: {rx.follow_up_date}</span>
-            )}
+          <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
+            {rx.item_count} medication{rx.item_count !== 1 ? "s" : ""}
+            {" · "}By: {rx.prescribed_by_name}
+            {rx.follow_up_date && <span> · Follow-up: {rx.follow_up_date}</span>}
             {rx.created_at && (
-              <span style={{ fontFamily: "inherit" }}> · {new Date(rx.created_at).toLocaleDateString("en-BD", { year: "numeric", month: "short", day: "numeric" })}</span>
+              <span> · {new Date(rx.created_at).toLocaleDateString("en-BD", { year: "numeric", month: "short", day: "numeric" })}</span>
             )}
           </div>
         </div>

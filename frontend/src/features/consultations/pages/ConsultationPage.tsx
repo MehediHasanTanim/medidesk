@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
 import Toast, { useToast } from "@/shared/components/Toast";
+import { useAuthStore } from "@/features/auth/store/authStore";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import {
   consultationsApi,
@@ -186,7 +187,22 @@ function NotesForm({ consultationId, initial, onSaved }: {
 
 // ── Prescription read-only display ────────────────────────────────────────────
 
-function PrescriptionView({ rx }: { rx: PrescriptionDetail }) {
+function PrescriptionView({ rx, userRole, onApproved }: {
+  rx: PrescriptionDetail;
+  userRole?: string;
+  onApproved?: () => void;
+}) {
+  const { toast, show: showToast, dismiss } = useToast();
+
+  const approveMutation = useMutation({
+    mutationFn: () => prescriptionsApi.approve(rx.prescription_id),
+    onSuccess: () => {
+      showToast("Prescription approved", "success");
+      onApproved?.();
+    },
+    onError: () => showToast("Failed to approve prescription", "error"),
+  });
+
   const STATUS_STYLES: Record<string, { bg: string; color: string; border: string }> = {
     active:   { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
     approved: { bg: "#eff6ff", color: colors.primary, border: "#bfdbfe" },
@@ -196,9 +212,51 @@ function PrescriptionView({ rx }: { rx: PrescriptionDetail }) {
 
   return (
     <div>
+      <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismiss} />
+
+      {/* Contextual draft banner */}
+      {rx.status === "draft" && userRole === "doctor" && (
+        <div style={{
+          background: "#fef3c7", border: "1px solid #fde68a", borderRadius: radius.md,
+          padding: "12px 16px", marginBottom: 16,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        }}>
+          <div>
+            <div style={{ fontWeight: 600, color: "#92400e", fontSize: font.base }}>Pending your approval</div>
+            <div style={{ fontSize: font.sm, color: "#b45309", marginTop: 2 }}>
+              This prescription was drafted by an assistant doctor and requires your review.
+            </div>
+          </div>
+          <button
+            onClick={() => approveMutation.mutate()}
+            disabled={approveMutation.isPending}
+            style={{
+              padding: "7px 18px", background: colors.success, color: colors.white,
+              border: "none", borderRadius: radius.md, cursor: "pointer",
+              fontSize: font.sm, fontWeight: 600, flexShrink: 0,
+              opacity: approveMutation.isPending ? 0.7 : 1,
+            }}
+          >
+            {approveMutation.isPending ? "Approving…" : "Approve"}
+          </button>
+        </div>
+      )}
+
+      {rx.status === "draft" && userRole !== "doctor" && (
+        <div style={{
+          background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: radius.md,
+          padding: "12px 16px", marginBottom: 16,
+        }}>
+          <div style={{ fontWeight: 600, color: colors.primary, fontSize: font.base }}>Awaiting doctor approval</div>
+          <div style={{ fontSize: font.sm, color: "#1d4ed8", marginTop: 2 }}>
+            Your prescription has been submitted and is pending review by a doctor.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <span style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, padding: "3px 12px", borderRadius: 999, fontSize: font.sm, fontWeight: 600, textTransform: "capitalize" }}>
-          {rx.status}
+          {rx.status === "draft" ? "Draft — Pending Approval" : rx.status === "approved" ? "Approved" : "Active"}
         </span>
         {rx.follow_up_date && (
           <span style={{ fontSize: font.sm, color: colors.primary }}>
@@ -479,7 +537,11 @@ function PrescriptionCreateForm({ consultationId, patientId, onCreated }: {
 
 // ── Prescription section (wrapper) ────────────────────────────────────────────
 
-function PrescriptionSection({ consultation }: { consultation: Consultation }) {
+function PrescriptionSection({ consultation, isCompleted, userRole }: {
+  consultation: Consultation;
+  isCompleted: boolean;
+  userRole: string;
+}) {
   const qc = useQueryClient();
 
   const { data: rx, isLoading, error } = useQuery<PrescriptionDetail | null>({
@@ -495,12 +557,24 @@ function PrescriptionSection({ consultation }: { consultation: Consultation }) {
     qc.invalidateQueries({ queryKey: ["prescription-by-consultation", consultation.id] });
   };
 
+  const handleApproved = () => {
+    qc.invalidateQueries({ queryKey: ["prescription-by-consultation", consultation.id] });
+    qc.invalidateQueries({ queryKey: ["pending-prescriptions"] });
+  };
+
   if (isLoading) return <div style={{ color: colors.textMuted, fontSize: font.sm }}>Loading prescription…</div>;
   if (error) return <div style={{ color: colors.danger, fontSize: font.sm }}>Failed to load prescription.</div>;
 
-  if (rx) return <PrescriptionView rx={rx} />;
+  if (rx) return <PrescriptionView rx={rx} userRole={userRole} onApproved={handleApproved} />;
 
-  // No prescription yet — show create form only on non-completed or completed consultations
+  if (isCompleted) {
+    return (
+      <div style={{ textAlign: "center", padding: "24px 0", color: colors.textMuted, fontSize: font.sm }}>
+        No prescription was written for this consultation.
+      </div>
+    );
+  }
+
   return (
     <PrescriptionCreateForm
       consultationId={consultation.id}
@@ -584,6 +658,7 @@ export default function ConsultationPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { toast, show: showToast, dismiss } = useToast();
+  const { user } = useAuthStore();
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
   const { data: consultation, isLoading, error, refetch } = useQuery<Consultation | null>({
@@ -699,7 +774,7 @@ export default function ConsultationPage() {
               )}
               <div style={cardStyle}>
                 <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
-                <PrescriptionSection consultation={consultation} />
+                <PrescriptionSection consultation={consultation} isCompleted={isCompleted} userRole={user?.role ?? ""} />
               </div>
             </div>
           </div>
@@ -734,7 +809,7 @@ export default function ConsultationPage() {
             {/* Prescription — full width below */}
             <div style={cardStyle}>
               <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
-              <PrescriptionSection consultation={consultation} />
+              <PrescriptionSection consultation={consultation} isCompleted={false} userRole={user?.role ?? ""} />
             </div>
           </>
         )}

@@ -1,6 +1,7 @@
 import uuid
 from typing import Any, Dict, List
 
+from django.db.models import Count
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +12,7 @@ from rest_framework.views import APIView
 from application.dtos.prescription_dto import CreatePrescriptionDTO, PrescriptionItemDTO
 from application.use_cases.prescription.create_prescription import CreatePrescriptionUseCase
 from domain.entities.prescription import Prescription
+from infrastructure.orm.models.prescription_model import PrescriptionModel
 from infrastructure.repositories.django_prescription_repository import DjangoPrescriptionRepository
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from interfaces.api.v1.prescriptions.serializers import (
@@ -193,17 +195,25 @@ class PendingPrescriptionsView(APIView):
         responses={200: PendingPrescriptionSerializer(many=True)},
     )
     def get(self, request: Request) -> Response:
-        prescriptions = DjangoPrescriptionRepository().list_pending()
+        qs = (
+            PrescriptionModel.objects
+            .select_related("patient", "prescribed_by")
+            .filter(status="draft")
+            .annotate(item_count=Count("items"))
+            .order_by("created_at")[:50]
+        )
         return Response([
             {
                 "prescription_id": str(p.id),
                 "consultation_id": str(p.consultation_id),
                 "patient_id": str(p.patient_id),
+                "patient_name": p.patient.full_name,
                 "prescribed_by_id": str(p.prescribed_by_id),
-                "status": p.status.value,
+                "prescribed_by_name": p.prescribed_by.full_name,
+                "status": p.status,
                 "follow_up_date": str(p.follow_up_date) if p.follow_up_date else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
-                "item_count": len(p.items),
+                "item_count": p.item_count,
             }
-            for p in prescriptions
+            for p in qs
         ])
