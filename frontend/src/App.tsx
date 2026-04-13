@@ -15,6 +15,7 @@ import PatientHistoryPage from "@/features/patients/pages/PatientHistoryPage";
 import PrescriptionsPage from "@/features/prescriptions/pages/PrescriptionsPage";
 import DoctorsPage from "@/features/doctors/pages/DoctorsPage";
 import ConsultationPage from "@/features/consultations/pages/ConsultationPage";
+import MedicinesPage from "@/features/medicines/pages/MedicinesPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -101,6 +102,18 @@ export default function App() {
             <PrivateRoute>
               <RoleGuard roles={["doctor"]}>
                 <PrescriptionsPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+
+        {/* Medicines — doctors + admins */}
+        <Route
+          path="/medicines"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor", "assistant_doctor", "super_admin", "admin"]}>
+                <MedicinesPage />
               </RoleGuard>
             </PrivateRoute>
           }
