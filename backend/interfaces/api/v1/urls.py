@@ -40,7 +40,13 @@ from interfaces.api.v1.consultations.views import (
     CompleteConsultationView,
     UpdateVitalsView,
 )
-from interfaces.api.v1.medicines.views import MedicineSearchView
+from interfaces.api.v1.medicines.views import (
+    MedicineSearchView,
+    GenericMedicineListView,
+    GenericMedicineDetailView,
+    BrandMedicineListView,
+    BrandMedicineDetailView,
+)
 from interfaces.api.v1.reports.views import ReportUploadView
 from interfaces.api.v1.prescriptions.views import (
     PrescriptionView,
@@ -106,6 +112,10 @@ urlpatterns = [
 
     # ── Medicines ─────────────────────────────────────────────────────────────
     path("medicines/search/", MedicineSearchView.as_view(), name="medicine_search"),
+    path("medicines/generics/", GenericMedicineListView.as_view(), name="generic_medicine_list"),
+    path("medicines/generics/<uuid:generic_id>/", GenericMedicineDetailView.as_view(), name="generic_medicine_detail"),
+    path("medicines/brands/", BrandMedicineListView.as_view(), name="brand_medicine_list"),
+    path("medicines/brands/<uuid:brand_id>/", BrandMedicineDetailView.as_view(), name="brand_medicine_detail"),
 
     # ── Specialities ──────────────────────────────────────────────────────────
     path("specialities/", SpecialityListView.as_view(), name="speciality_list"),
