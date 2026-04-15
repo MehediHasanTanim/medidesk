@@ -10,4 +10,7 @@ class Dosage:
     instructions: str = ""
 
     def __str__(self) -> str:
-        return f"{self.morning}+{self.afternoon}+{self.evening} × {self.duration_days} days"
+        m = self.morning or "0"
+        a = self.afternoon or "0"
+        e = self.evening or "0"
+        return f"{m}+{a}+{e} × {self.duration_days} days"

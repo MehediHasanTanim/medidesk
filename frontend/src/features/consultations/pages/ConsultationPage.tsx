@@ -404,7 +404,14 @@ function PrescriptionCreateForm({ consultationId, patientId, onCreated }: {
     if (!editingItem.medicine_id) return setError("Select a medicine");
     if (!editingItem.morning && !editingItem.afternoon && !editingItem.evening)
       return setError("Enter at least one dosage (morning/afternoon/evening)");
-    setItems((prev) => [...prev, editingItem as DraftItem]);
+    // Normalise empty slots to "0" so backend never receives blank strings
+    const normalised: DraftItem = {
+      ...editingItem as DraftItem,
+      morning: editingItem.morning || "0",
+      afternoon: editingItem.afternoon || "0",
+      evening: editingItem.evening || "0",
+    };
+    setItems((prev) => [...prev, normalised]);
     setEditingItem(null);
     setError("");
   };
@@ -496,7 +503,7 @@ function PrescriptionCreateForm({ consultationId, patientId, onCreated }: {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>{item.medicine_name}</div>
                 <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
-                  {item.morning}+{item.afternoon}+{item.evening} × {item.duration_days} days · {item.route}
+                  {item.morning || "0"}+{item.afternoon || "0"}+{item.evening || "0"} × {item.duration_days} days · {item.route}
                   {item.instructions && ` · ${item.instructions}`}
                 </div>
               </div>
