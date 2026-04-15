@@ -3,6 +3,22 @@ import uuid
 from django.db import models
 
 
+class ManufacturerModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True, db_index=True)
+    country = models.CharField(max_length=100, blank=True, default="Bangladesh")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "infrastructure"
+        db_table = "manufacturers"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class GenericMedicineModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     generic_name = models.CharField(max_length=255, unique=True, db_index=True)

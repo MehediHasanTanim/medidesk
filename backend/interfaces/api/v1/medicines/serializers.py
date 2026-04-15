@@ -3,6 +3,32 @@ from rest_framework import serializers
 FORM_CHOICES = ["tablet", "capsule", "syrup", "injection", "cream", "drops", "inhaler", "other"]
 
 
+# ── Manufacturer serializers ───────────────────────────────────────────────────
+
+class CreateManufacturerSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    country = serializers.CharField(max_length=100, required=False, default="Bangladesh")
+
+
+class UpdateManufacturerSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=False)
+    country = serializers.CharField(max_length=100, required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class ManufacturerSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    country = serializers.CharField()
+    is_active = serializers.BooleanField()
+    created_at = serializers.DateTimeField()
+
+
+class PaginatedManufacturerListSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    results = ManufacturerSerializer(many=True)
+
+
 # ── Request serializers ────────────────────────────────────────────────────────
 
 class CreateGenericMedicineSerializer(serializers.Serializer):

@@ -63,6 +63,27 @@ export interface UpdateBrandPayload {
   is_active?: boolean;
 }
 
+// ── Manufacturer types ────────────────────────────────────────────────────────
+
+export interface Manufacturer {
+  id: string;
+  name: string;
+  country: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateManufacturerPayload {
+  name: string;
+  country?: string;
+}
+
+export interface UpdateManufacturerPayload {
+  name?: string;
+  country?: string;
+  is_active?: boolean;
+}
+
 // ── Search result (used in prescription autocomplete) ─────────────────────────
 
 export interface MedicineSearchResult {
@@ -142,5 +163,28 @@ export const medicinesApi = {
   deactivateBrand: (id: string) =>
     apiClient
       .delete<BrandMedicine>(`/medicines/brands/${id}/`)
+      .then((r) => r.data),
+
+  // ── Manufacturers ────────────────────────────────────────────────────────────
+
+  listManufacturers: (params: { search?: string; active_only?: boolean; limit?: number } = {}) =>
+    apiClient
+      .get<PaginatedResponse<Manufacturer>>("/medicines/manufacturers/", { params })
+      .then((r) => r.data),
+
+  createManufacturer: (payload: CreateManufacturerPayload) =>
+    apiClient
+      .post<Manufacturer>("/medicines/manufacturers/", payload)
+      .then((r) => r.data),
+
+  updateManufacturer: (id: string, payload: UpdateManufacturerPayload) =>
+    apiClient
+      .patch<Manufacturer>(`/medicines/manufacturers/${id}/`, payload)
+      .then((r) => r.data),
+
+  /** Soft-delete: sets is_active = false */
+  deactivateManufacturer: (id: string) =>
+    apiClient
+      .delete<Manufacturer>(`/medicines/manufacturers/${id}/`)
       .then((r) => r.data),
 };

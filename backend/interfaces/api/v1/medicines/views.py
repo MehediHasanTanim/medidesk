@@ -10,19 +10,36 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from domain.entities.medicine import BrandMedicine, GenericMedicine
+from infrastructure.orm.models.medicine_model import ManufacturerModel
 from infrastructure.repositories.django_medicine_repository import DjangoMedicineRepository
 from interfaces.api.v1.medicines.serializers import (
     BrandMedicineSerializer,
     CreateBrandMedicineSerializer,
     CreateGenericMedicineSerializer,
+    CreateManufacturerSerializer,
     GenericMedicineSerializer,
+    ManufacturerSerializer,
     MedicineSearchResponseSerializer,
     PaginatedBrandListSerializer,
     PaginatedGenericListSerializer,
+    PaginatedManufacturerListSerializer,
     UpdateBrandMedicineSerializer,
     UpdateGenericMedicineSerializer,
+    UpdateManufacturerSerializer,
 )
 from interfaces.permissions import RolePermission
+
+
+# ── Manufacturer helpers ──────────────────────────────────────────────────────
+
+def _manufacturer_to_dict(m: ManufacturerModel) -> Dict[str, Any]:
+    return {
+        "id": str(m.id),
+        "name": m.name,
+        "country": m.country,
+        "is_active": m.is_active,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -387,3 +404,134 @@ class MedicineSearchView(APIView):
                 for m in medicines
             ]
         })
+
+
+# ── Manufacturer CRUD ─────────────────────────────────────────────────────────
+
+@extend_schema(tags=["medicines"])
+class ManufacturerListView(APIView):
+    """
+    GET  /medicines/manufacturers/  — list manufacturers (active by default)
+    POST /medicines/manufacturers/  — create manufacturer (doctor/admin)
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="List manufacturers",
+        parameters=[
+            OpenApiParameter("search", OpenApiTypes.STR, description="Filter by name"),
+            OpenApiParameter("active_only", OpenApiTypes.BOOL, description="Include inactive (default true)"),
+            OpenApiParameter("limit", OpenApiTypes.INT),
+            OpenApiParameter("offset", OpenApiTypes.INT),
+        ],
+        responses={200: PaginatedManufacturerListSerializer},
+    )
+    def get(self, request: Request) -> Response:
+        search = request.query_params.get("search", "")
+        active_only = request.query_params.get("active_only", "true").lower() != "false"
+        limit = min(int(request.query_params.get("limit", 200)), 500)
+        offset = int(request.query_params.get("offset", 0))
+
+        qs = ManufacturerModel.objects.all()
+        if active_only:
+            qs = qs.filter(is_active=True)
+        if search:
+            qs = qs.filter(name__icontains=search)
+        total = qs.count()
+        results = list(qs[offset:offset + limit])
+        return Response({
+            "count": total,
+            "results": [_manufacturer_to_dict(m) for m in results],
+        })
+
+    @extend_schema(
+        summary="Create manufacturer",
+        request=CreateManufacturerSerializer,
+        responses={201: ManufacturerSerializer},
+    )
+    def post(self, request: Request) -> Response:
+        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
+        self.check_permissions(request)
+
+        serializer = CreateManufacturerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        if ManufacturerModel.objects.filter(name__iexact=data["name"]).exists():
+            return Response(
+                {"error": f"Manufacturer '{data['name']}' already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        m = ManufacturerModel.objects.create(
+            name=data["name"].strip(),
+            country=data.get("country", "Bangladesh").strip(),
+        )
+        return Response(_manufacturer_to_dict(m), status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["medicines"])
+class ManufacturerDetailView(APIView):
+    """
+    GET    /medicines/manufacturers/<id>/  — detail
+    PATCH  /medicines/manufacturers/<id>/  — update (doctor/admin)
+    DELETE /medicines/manufacturers/<id>/  — deactivate (admin only)
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary="Get manufacturer", responses={200: ManufacturerSerializer})
+    def get(self, request: Request, manufacturer_id: uuid.UUID) -> Response:
+        try:
+            m = ManufacturerModel.objects.get(id=manufacturer_id)
+        except ManufacturerModel.DoesNotExist:
+            return Response({"error": "Manufacturer not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_manufacturer_to_dict(m))
+
+    @extend_schema(
+        summary="Update manufacturer",
+        request=UpdateManufacturerSerializer,
+        responses={200: ManufacturerSerializer},
+    )
+    def patch(self, request: Request, manufacturer_id: uuid.UUID) -> Response:
+        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
+        self.check_permissions(request)
+
+        try:
+            m = ManufacturerModel.objects.get(id=manufacturer_id)
+        except ManufacturerModel.DoesNotExist:
+            return Response({"error": "Manufacturer not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UpdateManufacturerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        if "name" in data:
+            new_name = data["name"].strip()
+            if ManufacturerModel.objects.filter(name__iexact=new_name).exclude(id=manufacturer_id).exists():
+                return Response({"error": f"Manufacturer '{new_name}' already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            m.name = new_name
+        if "country" in data:
+            m.country = data["country"].strip()
+        if "is_active" in data:
+            m.is_active = data["is_active"]
+        m.save()
+        return Response(_manufacturer_to_dict(m))
+
+    @extend_schema(
+        summary="Deactivate manufacturer",
+        description="Soft-delete: sets is_active=False. Existing brand records are unaffected.",
+        request=None,
+        responses={200: ManufacturerSerializer},
+    )
+    def delete(self, request: Request, manufacturer_id: uuid.UUID) -> Response:
+        self.permission_classes = [IsAuthenticated, RolePermission([])]  # admin only
+        self.check_permissions(request)
+
+        try:
+            m = ManufacturerModel.objects.get(id=manufacturer_id)
+        except ManufacturerModel.DoesNotExist:
+            return Response({"error": "Manufacturer not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        m.is_active = False
+        m.save()
+        return Response(_manufacturer_to_dict(m))

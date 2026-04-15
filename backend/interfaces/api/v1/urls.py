@@ -46,6 +46,8 @@ from interfaces.api.v1.medicines.views import (
     GenericMedicineDetailView,
     BrandMedicineListView,
     BrandMedicineDetailView,
+    ManufacturerListView,
+    ManufacturerDetailView,
 )
 from interfaces.api.v1.reports.views import ReportUploadView
 from interfaces.api.v1.prescriptions.views import (
@@ -116,6 +118,8 @@ urlpatterns = [
     path("medicines/generics/<uuid:generic_id>/", GenericMedicineDetailView.as_view(), name="generic_medicine_detail"),
     path("medicines/brands/", BrandMedicineListView.as_view(), name="brand_medicine_list"),
     path("medicines/brands/<uuid:brand_id>/", BrandMedicineDetailView.as_view(), name="brand_medicine_detail"),
+    path("medicines/manufacturers/", ManufacturerListView.as_view(), name="manufacturer_list"),
+    path("medicines/manufacturers/<uuid:manufacturer_id>/", ManufacturerDetailView.as_view(), name="manufacturer_detail"),
 
     # ── Specialities ──────────────────────────────────────────────────────────
     path("specialities/", SpecialityListView.as_view(), name="speciality_list"),
