@@ -117,6 +117,9 @@ export default function PrescriptionEditForm({
 
   // ── Item editing handlers ───────────────────────────────────────────────────
 
+  // True when editingItem is an existing item (its _key exists in the list)
+  const isEditingExisting = editingItem != null && items.some((i) => i._key === editingItem._key);
+
   const handleSelectMedicine = (m: MedicineSearchResult) => {
     setEditingItem({
       _key: ++keyRef.current,
@@ -131,7 +134,13 @@ export default function PrescriptionEditForm({
     });
   };
 
-  const handleAddItem = () => {
+  // Open inline editor for an existing item
+  const handleEditExisting = (item: DraftItem) => {
+    setEditingItem({ ...item });
+    setError("");
+  };
+
+  const handleConfirmItem = () => {
     if (!editingItem) return;
     if (!editingItem.medicine_id) return setError("Select a medicine");
     if (!editingItem.morning && !editingItem.afternoon && !editingItem.evening)
@@ -142,7 +151,13 @@ export default function PrescriptionEditForm({
       afternoon: editingItem.afternoon || "0",
       evening: editingItem.evening || "0",
     };
-    setItems((prev) => [...prev, normalised]);
+    if (isEditingExisting) {
+      // Replace the existing item in-place
+      setItems((prev) => prev.map((i) => (i._key === normalised._key ? normalised : i)));
+    } else {
+      // New item — append
+      setItems((prev) => [...prev, normalised]);
+    }
     setEditingItem(null);
     setError("");
   };
@@ -188,19 +203,22 @@ export default function PrescriptionEditForm({
         </div>
       )}
 
-      {/* Medicine search */}
-      <div style={{ marginBottom: 16 }}>
-        <MedicineSearchInput onSelect={handleSelectMedicine} />
-      </div>
+      {/* Medicine search — hidden while editing an existing item */}
+      {!isEditingExisting && (
+        <div style={{ marginBottom: 16 }}>
+          <MedicineSearchInput onSelect={handleSelectMedicine} />
+        </div>
+      )}
 
-      {/* Item editor — shown after selecting a medicine */}
+      {/* Item editor — shown when adding a new medicine or editing an existing one */}
       {editingItem && (
         <div style={{
-          background: colors.primaryLight, border: "1px solid #bfdbfe",
+          background: isEditingExisting ? "#f0fdf4" : colors.primaryLight,
+          border: isEditingExisting ? "1px solid #bbf7d0" : "1px solid #bfdbfe",
           borderRadius: radius.md, padding: 16, marginBottom: 16,
         }}>
           <div style={{ fontWeight: 600, color: colors.text, marginBottom: 12, fontSize: font.base }}>
-            {editingItem.medicine_name}
+            {isEditingExisting ? "✏ Edit: " : ""}{editingItem.medicine_name}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div>
@@ -245,7 +263,7 @@ export default function PrescriptionEditForm({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button onClick={() => setEditingItem(null)}
+            <button onClick={() => { setEditingItem(null); setError(""); }}
               style={{
                 padding: "6px 16px", background: colors.white,
                 border: `1px solid ${colors.border}`, borderRadius: radius.md,
@@ -253,13 +271,15 @@ export default function PrescriptionEditForm({
               }}>
               Cancel
             </button>
-            <button onClick={handleAddItem}
+            <button onClick={handleConfirmItem}
               style={{
-                padding: "6px 16px", background: colors.primary, color: colors.white,
+                padding: "6px 16px",
+                background: isEditingExisting ? colors.success : colors.primary,
+                color: colors.white,
                 border: "none", borderRadius: radius.md,
                 cursor: "pointer", fontSize: font.sm, fontWeight: 600,
               }}>
-              Add to Prescription
+              {isEditingExisting ? "Update Dosage" : "Add to Prescription"}
             </button>
           </div>
         </div>
@@ -274,37 +294,61 @@ export default function PrescriptionEditForm({
           }}>
             Items ({items.length})
           </div>
-          {items.map((item) => (
-            <div key={item._key} style={{
-              display: "flex", alignItems: "center",
-              background: colors.bg, border: `1px solid ${colors.border}`,
-              borderRadius: radius.md, padding: "8px 12px", marginBottom: 6,
-            }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>
-                  {item.medicine_name}
+          {items.map((item) => {
+            const isActiveEdit = editingItem?._key === item._key;
+            return (
+              <div key={item._key} style={{
+                display: "flex", alignItems: "center",
+                background: isActiveEdit ? "#f0fdf4" : colors.bg,
+                border: `1px solid ${isActiveEdit ? "#86efac" : colors.border}`,
+                borderRadius: radius.md, padding: "8px 12px", marginBottom: 6,
+                transition: "background 0.15s",
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>
+                    {item.medicine_name}
+                  </div>
+                  <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
+                    {item.morning || "0"}+{item.afternoon || "0"}+{item.evening || "0"} × {item.duration_days} days
+                    {" · "}{item.route}
+                    {item.instructions && ` · ${item.instructions}`}
+                  </div>
                 </div>
-                <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
-                  {item.morning || "0"}+{item.afternoon || "0"}+{item.evening || "0"} × {item.duration_days} days
-                  {" · "}{item.route}
-                  {item.instructions && ` · ${item.instructions}`}
-                </div>
+                {/* Edit dosage button */}
+                <button
+                  onClick={() => isActiveEdit ? setEditingItem(null) : handleEditExisting(item)}
+                  title={isActiveEdit ? "Cancel edit" : "Edit dosage"}
+                  style={{
+                    background: "none", border: "none",
+                    color: isActiveEdit ? colors.success : colors.primary,
+                    cursor: "pointer", fontSize: "14px", padding: "0 6px",
+                    opacity: 0.7, fontWeight: 600,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+                >
+                  {isActiveEdit ? "↩" : "✏"}
+                </button>
+                {/* Remove button */}
+                <button
+                  onClick={() => {
+                    if (isActiveEdit) setEditingItem(null);
+                    setItems((prev) => prev.filter((i) => i._key !== item._key));
+                  }}
+                  title="Remove"
+                  style={{
+                    background: "none", border: "none", color: colors.danger,
+                    cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "0 4px",
+                    opacity: 0.7,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+                >
+                  ×
+                </button>
               </div>
-              <button
-                onClick={() => setItems((prev) => prev.filter((i) => i._key !== item._key))}
-                title="Remove"
-                style={{
-                  background: "none", border: "none", color: colors.danger,
-                  cursor: "pointer", fontSize: "18px", lineHeight: 1, padding: "0 6px",
-                  opacity: 0.7,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
-              >
-                ×
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
