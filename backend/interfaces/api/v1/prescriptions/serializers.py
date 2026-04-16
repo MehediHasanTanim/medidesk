@@ -57,6 +57,12 @@ class CreatePrescriptionResponseSerializer(serializers.Serializer):
     follow_up_date = serializers.DateField(allow_null=True)
 
 
+class UpdatePrescriptionSerializer(serializers.Serializer):
+    """PATCH body for editing items on a DRAFT prescription (doctor only)."""
+    items = PrescriptionItemInputSerializer(many=True, min_length=1)
+    follow_up_date = serializers.DateField(required=False, allow_null=True)
+
+
 class ApproveResponseSerializer(serializers.Serializer):
     prescription_id = serializers.UUIDField()
     status = serializers.CharField()

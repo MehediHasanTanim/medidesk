@@ -15,12 +15,15 @@ from domain.entities.prescription import Prescription
 from infrastructure.orm.models.prescription_model import PrescriptionModel
 from infrastructure.repositories.django_prescription_repository import DjangoPrescriptionRepository
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
+from domain.entities.medicine import PrescriptionItem
+from domain.value_objects.dosage import Dosage
 from interfaces.api.v1.prescriptions.serializers import (
     ApproveResponseSerializer,
     CreatePrescriptionResponseSerializer,
     CreatePrescriptionSerializer,
     PendingPrescriptionSerializer,
     PrescriptionResponseSerializer,
+    UpdatePrescriptionSerializer,
 )
 from interfaces.permissions import RolePermission
 
@@ -124,6 +127,64 @@ class PrescriptionDetailView(APIView):
         prescription = DjangoPrescriptionRepository().get_by_id(prescription_id)
         if not prescription:
             return Response({"error": "Prescription not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_prescription_to_dict(prescription))
+
+
+    @extend_schema(
+        summary="Edit prescription items",
+        description=(
+            "Replace the items on a **draft** prescription. "
+            "Only doctors (and admins) may call this. "
+            "Accepts the same item schema as create. "
+            "Returns the updated full prescription."
+        ),
+        request=UpdatePrescriptionSerializer,
+        responses={200: PrescriptionResponseSerializer},
+    )
+    def patch(self, request: Request, prescription_id: uuid.UUID) -> Response:
+        # Only doctors (and admins via RolePermission logic) may edit
+        role = getattr(request.user, "role", "")
+        ADMIN_ROLES = {"admin", "super_admin"}
+        if role not in ({"doctor"} | ADMIN_ROLES):
+            return Response(
+                {"error": "Only doctors can edit prescriptions"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        repo = DjangoPrescriptionRepository()
+        prescription = repo.get_by_id(prescription_id)
+        if not prescription:
+            return Response({"error": "Prescription not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if prescription.status.value != "draft":
+            return Response(
+                {"error": "Only draft prescriptions can be edited"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = UpdatePrescriptionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        prescription.items = [
+            PrescriptionItem(
+                medicine_id=item["medicine_id"],
+                medicine_name=item["medicine_name"],
+                dosage=Dosage(
+                    morning=item["morning"] or "0",
+                    afternoon=item["afternoon"] or "0",
+                    evening=item["evening"] or "0",
+                    duration_days=item["duration_days"],
+                    instructions=item.get("instructions", ""),
+                ),
+                route=item.get("route", "oral"),
+            )
+            for item in data["items"]
+        ]
+        if "follow_up_date" in data:
+            prescription.follow_up_date = data.get("follow_up_date")
+
+        repo.save(prescription)
         return Response(_prescription_to_dict(prescription))
 
 

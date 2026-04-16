@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
@@ -16,7 +16,9 @@ import {
   type PrescriptionItemPayload,
   type PrescriptionDetail,
 } from "@/features/prescriptions/api/prescriptionsApi";
-import { medicinesApi, type MedicineSearchResult } from "@/features/medicines/api/medicinesApi";
+import type { MedicineSearchResult } from "@/features/medicines/api/medicinesApi";
+import MedicineSearchInputShared from "@/features/prescriptions/components/MedicineSearchInput";
+import PrescriptionEditForm from "@/features/prescriptions/components/PrescriptionEditForm";
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -187,12 +189,14 @@ function NotesForm({ consultationId, initial, onSaved }: {
 
 // ── Prescription read-only display ────────────────────────────────────────────
 
-function PrescriptionView({ rx, userRole, onApproved }: {
+function PrescriptionView({ rx, userRole, onApproved, onEdited }: {
   rx: PrescriptionDetail;
   userRole?: string;
   onApproved?: () => void;
+  onEdited?: () => void;
 }) {
   const { toast, show: showToast, dismiss } = useToast();
+  const [editMode, setEditMode] = useState(false);
 
   const approveMutation = useMutation({
     mutationFn: () => prescriptionsApi.approve(rx.prescription_id),
@@ -202,6 +206,18 @@ function PrescriptionView({ rx, userRole, onApproved }: {
     },
     onError: () => showToast("Failed to approve prescription", "error"),
   });
+
+  // Doctor editing a draft — render the edit form instead of the read-only view
+  if (editMode && rx.status === "draft" && userRole === "doctor") {
+    return (
+      <PrescriptionEditForm
+        rx={rx}
+        onSaved={() => { setEditMode(false); onEdited?.(); }}
+        onSavedAndApproved={() => { setEditMode(false); onApproved?.(); }}
+        onCancel={() => setEditMode(false)}
+      />
+    );
+  }
 
   const STATUS_STYLES: Record<string, { bg: string; color: string; border: string }> = {
     active:   { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
@@ -214,31 +230,47 @@ function PrescriptionView({ rx, userRole, onApproved }: {
     <div>
       <Toast message={toast?.message ?? null} type={toast?.type} onDismiss={dismiss} />
 
-      {/* Contextual draft banner */}
+      {/* Doctor's action banner for draft prescriptions */}
       {rx.status === "draft" && userRole === "doctor" && (
         <div style={{
           background: "#fef3c7", border: "1px solid #fde68a", borderRadius: radius.md,
           padding: "12px 16px", marginBottom: 16,
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          flexWrap: "wrap",
         }}>
           <div>
-            <div style={{ fontWeight: 600, color: "#92400e", fontSize: font.base }}>Pending your approval</div>
+            <div style={{ fontWeight: 600, color: "#92400e", fontSize: font.base }}>
+              Pending your approval
+            </div>
             <div style={{ fontSize: font.sm, color: "#b45309", marginTop: 2 }}>
-              This prescription was drafted by an assistant doctor and requires your review.
+              Drafted by an assistant doctor. You can edit medicines before approving.
             </div>
           </div>
-          <button
-            onClick={() => approveMutation.mutate()}
-            disabled={approveMutation.isPending}
-            style={{
-              padding: "7px 18px", background: colors.success, color: colors.white,
-              border: "none", borderRadius: radius.md, cursor: "pointer",
-              fontSize: font.sm, fontWeight: 600, flexShrink: 0,
-              opacity: approveMutation.isPending ? 0.7 : 1,
-            }}
-          >
-            {approveMutation.isPending ? "Approving…" : "Approve"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={() => setEditMode(true)}
+              style={{
+                padding: "7px 16px", background: colors.white,
+                border: `1px solid #f59e0b`, color: "#92400e",
+                borderRadius: radius.md, cursor: "pointer",
+                fontSize: font.sm, fontWeight: 600,
+              }}
+            >
+              ✏ Edit
+            </button>
+            <button
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending}
+              style={{
+                padding: "7px 18px", background: colors.success, color: colors.white,
+                border: "none", borderRadius: radius.md, cursor: "pointer",
+                fontSize: font.sm, fontWeight: 600,
+                opacity: approveMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {approveMutation.isPending ? "Approving…" : "Approve"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -247,7 +279,9 @@ function PrescriptionView({ rx, userRole, onApproved }: {
           background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: radius.md,
           padding: "12px 16px", marginBottom: 16,
         }}>
-          <div style={{ fontWeight: 600, color: colors.primary, fontSize: font.base }}>Awaiting doctor approval</div>
+          <div style={{ fontWeight: 600, color: colors.primary, fontSize: font.base }}>
+            Awaiting doctor approval
+          </div>
           <div style={{ fontSize: font.sm, color: "#1d4ed8", marginTop: 2 }}>
             Your prescription has been submitted and is pending review by a doctor.
           </div>
@@ -255,7 +289,11 @@ function PrescriptionView({ rx, userRole, onApproved }: {
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <span style={{ background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, padding: "3px 12px", borderRadius: 999, fontSize: font.sm, fontWeight: 600, textTransform: "capitalize" }}>
+        <span style={{
+          background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`,
+          padding: "3px 12px", borderRadius: 999, fontSize: font.sm,
+          fontWeight: 600, textTransform: "capitalize",
+        }}>
           {rx.status === "draft" ? "Draft — Pending Approval" : rx.status === "approved" ? "Approved" : "Active"}
         </span>
         {rx.follow_up_date && (
@@ -267,8 +305,13 @@ function PrescriptionView({ rx, userRole, onApproved }: {
 
       <div style={{ display: "grid", gap: 8 }}>
         {rx.items.map((item, i) => (
-          <div key={i} style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "10px 14px" }}>
-            <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>{item.medicine_name}</div>
+          <div key={i} style={{
+            background: colors.bg, border: `1px solid ${colors.border}`,
+            borderRadius: radius.md, padding: "10px 14px",
+          }}>
+            <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>
+              {item.medicine_name}
+            </div>
             <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 3 }}>
               <span style={{ fontWeight: 500, color: colors.text }}>{item.dosage_display}</span>
               {" · "}{item.route}
@@ -289,73 +332,7 @@ interface DraftItem extends PrescriptionItemPayload {
 
 const ROUTES = ["oral", "sublingual", "topical", "inhaled", "iv", "im", "sc", "rectal", "nasal", "ophthalmic"];
 
-function MedicineSearchInput({ onSelect }: { onSelect: (m: MedicineSearchResult) => void }) {
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const { data: results = [] } = useQuery({
-    queryKey: ["medicine-search", q],
-    queryFn: () => medicinesApi.search(q),
-    enabled: q.length >= 2,
-    staleTime: 30_000,
-  });
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <label style={labelStyle}>Search Medicine</label>
-      <input
-        type="text"
-        placeholder="Type brand name or generic (min 2 chars)…"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        style={inputStyle}
-        autoComplete="off"
-      />
-      {open && q.length >= 2 && results.length > 0 && (
-        <div style={{
-          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
-          background: colors.white, border: `1px solid ${colors.border}`,
-          borderRadius: radius.md, boxShadow: shadow.md, maxHeight: 200, overflowY: "auto",
-          marginTop: 2,
-        }}>
-          {results.map((m) => (
-            <div
-              key={m.id}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onSelect(m);
-                setQ("");
-                setOpen(false);
-              }}
-              style={{ padding: "9px 14px", cursor: "pointer", borderBottom: `1px solid ${colors.borderLight}`, fontSize: font.base }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = colors.bg)}
-              onMouseLeave={(e) => (e.currentTarget.style.background = colors.white)}
-            >
-              <span style={{ fontWeight: 600, color: colors.text }}>{m.brand_name}</span>
-              <span style={{ color: colors.textMuted, fontSize: font.sm }}> {m.strength} · {m.form} · {m.manufacturer}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {open && q.length >= 2 && results.length === 0 && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "10px 14px", fontSize: font.sm, color: colors.textMuted, marginTop: 2 }}>
-          No medicines found
-        </div>
-      )}
-    </div>
-  );
-}
+// MedicineSearchInput is imported from shared prescriptions components above
 
 function PrescriptionCreateForm({ consultationId, patientId, onCreated }: {
   consultationId: string;
@@ -428,7 +405,7 @@ function PrescriptionCreateForm({ consultationId, patientId, onCreated }: {
 
       {/* Medicine search */}
       <div style={{ marginBottom: 16 }}>
-        <MedicineSearchInput onSelect={handleSelectMedicine} />
+        <MedicineSearchInputShared onSelect={handleSelectMedicine} />
       </div>
 
       {/* Item editor — shown after selecting a medicine */}
@@ -572,7 +549,14 @@ function PrescriptionSection({ consultation, isCompleted, userRole }: {
   if (isLoading) return <div style={{ color: colors.textMuted, fontSize: font.sm }}>Loading prescription…</div>;
   if (error) return <div style={{ color: colors.danger, fontSize: font.sm }}>Failed to load prescription.</div>;
 
-  if (rx) return <PrescriptionView rx={rx} userRole={userRole} onApproved={handleApproved} />;
+  if (rx) return (
+    <PrescriptionView
+      rx={rx}
+      userRole={userRole}
+      onApproved={handleApproved}
+      onEdited={() => qc.invalidateQueries({ queryKey: ["prescription-by-consultation", consultation.id] })}
+    />
+  );
 
   if (isCompleted) {
     return (

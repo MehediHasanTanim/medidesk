@@ -3,18 +3,44 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import { prescriptionsApi, type PendingPrescription } from "@/features/prescriptions/api/prescriptionsApi";
+import PrescriptionEditForm from "@/features/prescriptions/components/PrescriptionEditForm";
 
-function PrescriptionRow({ rx, onApprove }: { rx: PendingPrescription; onApprove: (id: string) => void }) {
+function PrescriptionRow({
+  rx,
+  onApprove,
+}: {
+  rx: PendingPrescription;
+  onApprove: (id: string) => void;
+}) {
+  const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+
+  const detailQueryKey = ["prescription-detail", rx.consultation_id];
 
   const { data: detail, isLoading } = useQuery({
-    queryKey: ["prescription-detail", rx.consultation_id],
+    queryKey: detailQueryKey,
     queryFn: () => prescriptionsApi.getByConsultation(rx.consultation_id),
     enabled: expanded,
   });
 
+  const handleSaved = () => {
+    setEditMode(false);
+    qc.invalidateQueries({ queryKey: detailQueryKey });
+  };
+
+  const handleApproved = () => {
+    setEditMode(false);
+    // PrescriptionEditForm already called approve — just refresh the pending list
+    qc.invalidateQueries({ queryKey: ["pending-prescriptions"] });
+  };
+
   return (
-    <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, marginBottom: 12, overflow: "hidden" }}>
+    <div style={{
+      background: colors.white, borderRadius: radius.lg,
+      boxShadow: shadow.sm, marginBottom: 12, overflow: "hidden",
+    }}>
+      {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", padding: "16px 20px", gap: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text }}>
@@ -25,7 +51,12 @@ function PrescriptionRow({ rx, onApprove }: { rx: PendingPrescription; onApprove
             {" · "}By: {rx.prescribed_by_name}
             {rx.follow_up_date && <span> · Follow-up: {rx.follow_up_date}</span>}
             {rx.created_at && (
-              <span> · {new Date(rx.created_at).toLocaleDateString("en-BD", { year: "numeric", month: "short", day: "numeric" })}</span>
+              <span>
+                {" · "}
+                {new Date(rx.created_at).toLocaleDateString("en-BD", {
+                  year: "numeric", month: "short", day: "numeric",
+                })}
+              </span>
             )}
           </div>
         </div>
@@ -38,49 +69,108 @@ function PrescriptionRow({ rx, onApprove }: { rx: PendingPrescription; onApprove
         </span>
 
         <button
-          onClick={() => setExpanded((e) => !e)}
-          style={{ background: "none", border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "5px 14px", cursor: "pointer", fontSize: font.sm, color: colors.textMuted }}
+          onClick={() => { setExpanded((e) => !e); if (editMode) setEditMode(false); }}
+          style={{
+            background: "none", border: `1px solid ${colors.border}`,
+            borderRadius: radius.md, padding: "5px 14px",
+            cursor: "pointer", fontSize: font.sm, color: colors.textMuted,
+          }}
         >
           {expanded ? "Hide" : "Review"}
         </button>
 
         <button
           onClick={() => onApprove(rx.prescription_id)}
-          style={{ background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, padding: "6px 16px", cursor: "pointer", fontSize: font.sm, fontWeight: 600 }}
+          style={{
+            background: colors.success, color: colors.white, border: "none",
+            borderRadius: radius.md, padding: "6px 16px",
+            cursor: "pointer", fontSize: font.sm, fontWeight: 600,
+          }}
         >
           Approve
         </button>
       </div>
 
+      {/* Expanded panel */}
       {expanded && (
-        <div style={{ borderTop: `1px solid ${colors.border}`, padding: "16px 20px", background: colors.bg }}>
-          {isLoading ? (
-            <p style={{ color: colors.textMuted, margin: 0, fontSize: font.sm }}>Loading prescription…</p>
-          ) : detail ? (
-            <div>
-              <div style={{ fontSize: font.sm, fontWeight: 600, color: colors.textMuted, marginBottom: 10, letterSpacing: "0.05em" }}>
-                PRESCRIPTION ITEMS
-              </div>
-              {detail.items.map((item, i) => (
-                <div
-                  key={i}
-                  style={{ background: colors.white, borderRadius: radius.md, padding: "10px 14px", marginBottom: 8, border: `1px solid ${colors.border}` }}
-                >
-                  <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>{item.medicine_name}</div>
-                  <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
-                    {item.dosage_display} · {item.route}
-                    {item.instructions && ` · ${item.instructions}`}
+        <div style={{ borderTop: `1px solid ${colors.border}`, padding: "20px", background: colors.bg }}>
+          {isLoading && (
+            <p style={{ color: colors.textMuted, margin: 0, fontSize: font.sm }}>
+              Loading prescription…
+            </p>
+          )}
+
+          {!isLoading && !detail && (
+            <p style={{ color: colors.danger, margin: 0, fontSize: font.sm }}>
+              Failed to load details.
+            </p>
+          )}
+
+          {!isLoading && detail && (
+            editMode ? (
+              /* ── Inline edit form ── */
+              <PrescriptionEditForm
+                rx={detail}
+                onSaved={handleSaved}
+                onSavedAndApproved={handleApproved}
+                onCancel={() => setEditMode(false)}
+              />
+            ) : (
+              /* ── Read-only detail view ── */
+              <div>
+                <div style={{
+                  display: "flex", alignItems: "center",
+                  justifyContent: "space-between", marginBottom: 12,
+                }}>
+                  <div style={{
+                    fontSize: font.sm, fontWeight: 600, color: colors.textMuted,
+                    letterSpacing: "0.05em",
+                  }}>
+                    PRESCRIPTION ITEMS
                   </div>
+                  <button
+                    onClick={() => setEditMode(true)}
+                    style={{
+                      padding: "5px 14px",
+                      background: colors.white,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: radius.md,
+                      cursor: "pointer",
+                      fontSize: font.sm,
+                      color: colors.text,
+                      fontWeight: 500,
+                    }}
+                  >
+                    ✏ Edit Medicines
+                  </button>
                 </div>
-              ))}
-              {detail.follow_up_date && (
-                <div style={{ marginTop: 10, fontSize: font.sm, color: colors.primary, fontWeight: 500 }}>
-                  Follow-up: {detail.follow_up_date}
-                </div>
-              )}
-            </div>
-          ) : (
-            <p style={{ color: colors.danger, margin: 0, fontSize: font.sm }}>Failed to load details.</p>
+
+                {detail.items.map((item, i) => (
+                  <div key={i} style={{
+                    background: colors.white, borderRadius: radius.md,
+                    padding: "10px 14px", marginBottom: 8,
+                    border: `1px solid ${colors.border}`,
+                  }}>
+                    <div style={{ fontWeight: 600, color: colors.text, fontSize: font.base }}>
+                      {item.medicine_name}
+                    </div>
+                    <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
+                      {item.dosage_display} · {item.route}
+                      {item.instructions && ` · ${item.instructions}`}
+                    </div>
+                  </div>
+                ))}
+
+                {detail.follow_up_date && (
+                  <div style={{
+                    marginTop: 10, fontSize: font.sm,
+                    color: colors.primary, fontWeight: 500,
+                  }}>
+                    Follow-up: {detail.follow_up_date}
+                  </div>
+                )}
+              </div>
+            )
           )}
         </div>
       )}
