@@ -190,11 +190,22 @@ function CreateInvoiceModal({ patientId, onClose }: { patientId: string; onClose
 
 // ── Invoice Detail Panel ───────────────────────────────────────────────────────
 function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; patientId: string; onBack: () => void }) {
+  const qc = useQueryClient();
   const [showPayment, setShowPayment] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ["invoice", invoiceId],
     queryFn: () => billingApi.getInvoice(invoiceId),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => billingApi.cancelInvoice(invoiceId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoices", patientId] });
+      setConfirmCancel(false);
+    },
   });
 
   if (isLoading) return <div style={{ padding: 40, color: colors.textMuted }}>Loading invoice…</div>;
@@ -202,6 +213,7 @@ function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; pat
 
   const totalPaid = invoice.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
   const canPay = ["issued", "partially_paid"].includes(invoice.status);
+  const canCancel = ["issued", "partially_paid", "draft"].includes(invoice.status);
 
   return (
     <div>
@@ -217,13 +229,32 @@ function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; pat
               {invoice.created_at ? new Date(invoice.created_at).toLocaleDateString("en-BD") : ""}
             </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <StatusBadge status={invoice.status} />
             {canPay && (
               <button onClick={() => setShowPayment(true)}
                 style={{ padding: "8px 18px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}>
                 Record Payment
               </button>
+            )}
+            {canCancel && !confirmCancel && (
+              <button onClick={() => setConfirmCancel(true)}
+                style={{ padding: "8px 16px", background: colors.white, color: colors.danger, border: `1px solid ${colors.danger}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.sm, fontWeight: 600 }}>
+                Cancel Invoice
+              </button>
+            )}
+            {confirmCancel && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fef2f2", border: `1px solid #fecaca`, borderRadius: radius.md, padding: "6px 12px" }}>
+                <span style={{ fontSize: font.sm, color: colors.danger, fontWeight: 500 }}>Confirm cancel?</span>
+                <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}
+                  style={{ padding: "4px 12px", background: colors.danger, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.sm, fontWeight: 600 }}>
+                  {cancelMutation.isPending ? "…" : "Yes"}
+                </button>
+                <button onClick={() => setConfirmCancel(false)}
+                  style={{ padding: "4px 10px", background: "none", border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.sm }}>
+                  No
+                </button>
+              </div>
             )}
           </div>
         </div>

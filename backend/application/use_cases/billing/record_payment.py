@@ -19,19 +19,33 @@ class RecordPaymentUseCase:
                 raise ValueError("Invoice not found")
             if invoice.status == InvoiceStatus.CANCELLED:
                 raise ValueError("Cannot record payment for a cancelled invoice")
+            if invoice.status == InvoiceStatus.PAID:
+                raise ValueError("Invoice is already fully paid")
+
+            # Calculate how much has already been paid
+            existing_payments = self._uow.billing.get_payments_by_invoice(invoice.id)
+            already_paid = sum(p.amount.amount for p in existing_payments)
+            remaining = invoice.total_due.amount - already_paid
+
+            if remaining <= Decimal("0"):
+                raise ValueError("Invoice is already fully paid")
+
+            payment_amount = Decimal(str(dto.amount))
+            if payment_amount > remaining:
+                raise ValueError(
+                    f"Payment amount ৳{payment_amount} exceeds the remaining balance of ৳{remaining}"
+                )
 
             payment = Payment(
                 id=uuid.uuid4(),
                 invoice_id=invoice.id,
-                amount=Money(Decimal(str(dto.amount))),
+                amount=Money(payment_amount),
                 method=PaymentMethod(dto.method),
                 transaction_ref=dto.transaction_ref,
                 recorded_by_id=uuid.UUID(dto.recorded_by_id) if dto.recorded_by_id else None,
             )
 
-            existing_payments = self._uow.billing.get_payments_by_invoice(invoice.id)
-            total_paid = sum(p.amount.amount for p in existing_payments) + payment.amount.amount
-
+            total_paid = already_paid + payment_amount
             if total_paid >= invoice.total_due.amount:
                 invoice.status = InvoiceStatus.PAID
             else:
@@ -41,9 +55,11 @@ class RecordPaymentUseCase:
             self._uow.billing.save_invoice(invoice)
             self._uow.commit()
 
+        balance_remaining = invoice.total_due.amount - total_paid
         return {
             "payment_id": str(payment.id),
             "invoice_id": str(invoice.id),
             "amount_paid": str(payment.amount.amount),
             "invoice_status": invoice.status.value,
+            "balance_remaining": str(max(balance_remaining, Decimal("0"))),
         }

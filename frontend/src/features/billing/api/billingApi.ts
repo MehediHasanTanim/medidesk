@@ -65,6 +65,14 @@ export interface RecordPaymentPayload {
   transaction_ref?: string;
 }
 
+export interface RecordPaymentResponse {
+  payment_id: string;
+  invoice_id: string;
+  amount_paid: string;
+  invoice_status: InvoiceStatus;
+  balance_remaining: string;
+}
+
 export const billingApi = {
   listByPatient: (patientId: string) =>
     apiClient
@@ -80,5 +88,16 @@ export const billingApi = {
     ).then((r) => r.data),
 
   recordPayment: (payload: RecordPaymentPayload) =>
-    apiClient.post("/payments/", payload).then((r) => r.data),
+    apiClient
+      .post<RecordPaymentResponse>("/payments/", payload)
+      .then((r) => r.data),
+
+  /** PATCH /invoices/<id>/ — cancel an issued or partially-paid invoice. */
+  cancelInvoice: (invoiceId: string) =>
+    apiClient
+      .patch<{ invoice_id: string; invoice_number: string; status: string }>(
+        `/invoices/${invoiceId}/`,
+        { status: "cancelled" }
+      )
+      .then((r) => r.data),
 };
