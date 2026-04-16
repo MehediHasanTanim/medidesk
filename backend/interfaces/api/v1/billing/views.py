@@ -54,7 +54,7 @@ def _invoice_to_dict(invoice) -> dict:
 
 @extend_schema(tags=["billing"])
 class InvoiceView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "admin"])]
+    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "admin"])]
 
     @extend_schema(
         summary="List invoices for a patient",
@@ -175,9 +175,9 @@ class InvoiceDetailView(APIView):
         # Only receptionists and admins may cancel invoices
         role = getattr(request.user, "role", "")
         ADMIN_ROLES = {"admin", "super_admin"}
-        if role not in ({"receptionist"} | ADMIN_ROLES):
+        if role not in ({"receptionist", "assistant"} | ADMIN_ROLES):
             return Response(
-                {"error": "Only receptionists can update invoices"},
+                {"error": "Only receptionists and assistants can update invoices"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -201,7 +201,7 @@ class InvoiceDetailView(APIView):
 
 @extend_schema(tags=["billing"])
 class PaymentView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "admin"])]
+    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "admin"])]
 
     @extend_schema(
         summary="Record a payment",

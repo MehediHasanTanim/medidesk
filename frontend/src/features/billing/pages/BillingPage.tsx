@@ -35,15 +35,23 @@ function StatusBadge({ status }: { status: string }) {
 // ── Record Payment Modal ───────────────────────────────────────────────────────
 function RecordPaymentModal({ invoice, onClose }: { invoice: InvoiceDetail; onClose: () => void }) {
   const qc = useQueryClient();
-  const [amount, setAmount] = useState(invoice.total_due);
+
+  // Compute remaining balance from existing payments
+  const totalPaid = invoice.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+  const remaining = Math.max(parseFloat(invoice.total_due) - totalPaid, 0);
+
+  const [amount, setAmount] = useState(remaining.toFixed(2));
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [ref, setRef] = useState("");
   const [error, setError] = useState("");
 
+  const enteredAmount = parseFloat(amount) || 0;
+  const balanceAfter = Math.max(remaining - enteredAmount, 0);
+
   const pay = useMutation({
     mutationFn: () => billingApi.recordPayment({
       invoice_id: invoice.invoice_id,
-      amount: parseFloat(amount),
+      amount: enteredAmount,
       method,
       transaction_ref: ref,
     }),
@@ -61,14 +69,45 @@ function RecordPaymentModal({ invoice, onClose }: { invoice: InvoiceDetail; onCl
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}>
       <div style={{ background: colors.white, borderRadius: radius.lg, padding: 28, width: 420, boxShadow: shadow.lg }}>
-        <h3 style={{ margin: "0 0 16px", fontSize: font.lg, fontWeight: 600 }}>Record Payment</h3>
-        <p style={{ margin: "0 0 18px", color: colors.textMuted, fontSize: font.sm }}>Invoice {invoice.invoice_number} · Total due: ৳{invoice.total_due}</p>
+        <h3 style={{ margin: "0 0 4px", fontSize: font.lg, fontWeight: 600 }}>Record Payment</h3>
+        <p style={{ margin: "0 0 6px", color: colors.textMuted, fontSize: font.sm }}>
+          {invoice.invoice_number} · Total: ৳{parseFloat(invoice.total_due).toFixed(2)}
+        </p>
+        {totalPaid > 0 && (
+          <p style={{ margin: "0 0 16px", fontSize: font.sm }}>
+            <span style={{ color: colors.success, fontWeight: 600 }}>Paid: ৳{totalPaid.toFixed(2)}</span>
+            <span style={{ color: colors.textMuted }}> · </span>
+            <span style={{ color: colors.warning, fontWeight: 600 }}>Remaining: ৳{remaining.toFixed(2)}</span>
+          </p>
+        )}
+        {totalPaid === 0 && <div style={{ marginBottom: 16 }} />}
 
         {error && <div style={{ background: colors.dangerLight, border: `1px solid #fecaca`, color: colors.danger, padding: "10px 14px", borderRadius: radius.md, marginBottom: 14, fontSize: font.sm }}>{error}</div>}
 
         <div style={{ marginBottom: 14 }}>
-          <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Amount (৳)</label>
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle} min="0" step="0.01" />
+          <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>
+            Amount (৳)
+            <span style={{ fontWeight: 400, color: colors.textMuted, marginLeft: 6 }}>max ৳{remaining.toFixed(2)}</span>
+          </label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => { setAmount(e.target.value); setError(""); }}
+            style={inputStyle}
+            min="0.01"
+            max={remaining.toFixed(2)}
+            step="0.01"
+          />
+          {enteredAmount > 0 && enteredAmount <= remaining && balanceAfter > 0 && (
+            <div style={{ marginTop: 4, fontSize: font.sm, color: colors.textMuted }}>
+              Balance after payment: ৳{balanceAfter.toFixed(2)}
+            </div>
+          )}
+          {enteredAmount > remaining && (
+            <div style={{ marginTop: 4, fontSize: font.sm, color: colors.danger }}>
+              Exceeds remaining balance of ৳{remaining.toFixed(2)}
+            </div>
+          )}
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Method</label>
@@ -82,8 +121,14 @@ function RecordPaymentModal({ invoice, onClose }: { invoice: InvoiceDetail; onCl
         </div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "8px 18px", background: colors.borderLight, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}>Cancel</button>
-          <button onClick={() => pay.mutate()} disabled={pay.isPending || !amount} style={{ padding: "8px 18px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", background: colors.borderLight, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}>
+            Cancel
+          </button>
+          <button
+            onClick={() => pay.mutate()}
+            disabled={pay.isPending || enteredAmount <= 0 || enteredAmount > remaining}
+            style={{ padding: "8px 18px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base,
+              opacity: (enteredAmount <= 0 || enteredAmount > remaining) ? 0.5 : 1 }}>
             {pay.isPending ? "Saving…" : "Record Payment"}
           </button>
         </div>
