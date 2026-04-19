@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import { billingApi, PAYMENT_METHOD_LABELS, INVOICE_STATUS_COLORS } from "@/features/billing/api/billingApi";
 import type { InvoiceSummary, InvoiceDetail, PaymentMethod, CreateInvoicePayload } from "@/features/billing/api/billingApi";
+import { consultationsApi } from "@/features/consultations/api/consultationsApi";
 import apiClient from "@/shared/lib/apiClient";
 
 const inputStyle = {
@@ -236,6 +238,7 @@ function CreateInvoiceModal({ patientId, onClose }: { patientId: string; onClose
 // ── Invoice Detail Panel ───────────────────────────────────────────────────────
 function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; patientId: string; onBack: () => void }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [showPayment, setShowPayment] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -274,8 +277,25 @@ function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; pat
               {invoice.created_at ? new Date(invoice.created_at).toLocaleDateString("en-BD") : ""}
             </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <StatusBadge status={invoice.status} />
+            {invoice.consultation_id && (
+              <button
+                onClick={() =>
+                  consultationsApi.get(invoice.consultation_id!).then((c) =>
+                    navigate(`/consultations/${c.appointment_id}`)
+                  )
+                }
+                style={{
+                  padding: "6px 14px", background: colors.primaryLight,
+                  color: colors.primary, border: `1px solid #bfdbfe`,
+                  borderRadius: radius.md, cursor: "pointer",
+                  fontSize: font.sm, fontWeight: 600, whiteSpace: "nowrap",
+                }}
+              >
+                View Consultation →
+              </button>
+            )}
             {canPay && (
               <button onClick={() => setShowPayment(true)}
                 style={{ padding: "8px 18px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}>

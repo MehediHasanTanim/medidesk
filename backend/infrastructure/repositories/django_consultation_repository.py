@@ -10,20 +10,22 @@ from infrastructure.orm.models.consultation_model import ConsultationModel
 
 class DjangoConsultationRepository(IConsultationRepository):
 
+    _qs = ConsultationModel.objects.select_related("appointment")
+
     def get_by_id(self, consultation_id: UUID) -> Optional[Consultation]:
         try:
-            return self._to_domain(ConsultationModel.objects.get(id=consultation_id))
+            return self._to_domain(self._qs.get(id=consultation_id))
         except ConsultationModel.DoesNotExist:
             return None
 
     def get_by_appointment(self, appointment_id: UUID) -> Optional[Consultation]:
         try:
-            return self._to_domain(ConsultationModel.objects.get(appointment_id=appointment_id))
+            return self._to_domain(self._qs.get(appointment_id=appointment_id))
         except ConsultationModel.DoesNotExist:
             return None
 
     def get_by_patient(self, patient_id: UUID, limit: int = 20) -> List[Consultation]:
-        qs = ConsultationModel.objects.filter(patient_id=patient_id).order_by("-created_at")[:limit]
+        qs = self._qs.filter(patient_id=patient_id).order_by("-created_at")[:limit]
         return [self._to_domain(m) for m in qs]
 
     def save(self, consultation: Consultation) -> Consultation:
@@ -69,6 +71,7 @@ class DjangoConsultationRepository(IConsultationRepository):
             appointment_id=model.appointment_id,
             patient_id=model.patient_id,
             doctor_id=model.doctor_id,
+            appointment_doctor_id=model.appointment.doctor_id,
             chief_complaints=model.chief_complaints,
             clinical_findings=model.clinical_findings,
             diagnosis=model.diagnosis,

@@ -59,6 +59,14 @@ class DjangoBillingRepository(IBillingRepository):
         qs = PaymentModel.objects.filter(invoice_id=invoice_id)
         return [self._payment_to_domain(m) for m in qs]
 
+    def get_invoice_by_consultation(self, consultation_id: UUID) -> Optional[Invoice]:
+        try:
+            return self._invoice_to_domain(
+                InvoiceModel.objects.prefetch_related("items").get(consultation_id=consultation_id)
+            )
+        except InvoiceModel.DoesNotExist:
+            return None
+
     def get_invoices_by_patient(self, patient_id: UUID, limit: int = 50) -> List[Invoice]:
         qs = InvoiceModel.objects.prefetch_related("items").filter(
             patient_id=patient_id

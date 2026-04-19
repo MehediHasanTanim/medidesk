@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -13,6 +13,9 @@ class Consultation:
     patient_id: UUID
     doctor_id: UUID
     chief_complaints: str
+    # Attending physician from the appointment — may differ from doctor_id
+    # when an assistant doctor started the consultation on behalf of the doctor.
+    appointment_doctor_id: Optional[UUID] = field(default=None)
     clinical_findings: str = ""
     diagnosis: str = ""
     notes: str = ""

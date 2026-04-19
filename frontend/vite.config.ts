@@ -17,6 +17,10 @@ export default defineConfig({
         target: process.env.BACKEND_URL ?? "http://localhost:8005",
         changeOrigin: true,
       },
+      "/media": {
+        target: process.env.BACKEND_URL ?? "http://localhost:8005",
+        changeOrigin: true,
+      },
     },
   },
 });

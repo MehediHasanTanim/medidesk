@@ -77,18 +77,18 @@ export default function App() {
           path="/consultations/:appointmentId"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant", "admin", "super_admin"]}>
                 <ConsultationPage />
               </RoleGuard>
             </PrivateRoute>
           }
         />
-        {/* Billing — receptionist & assistant handle invoices; doctors view only */}
+        {/* Billing — receptionist & assistant handle invoices; admins can view/manage */}
         <Route
           path="/billing"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["receptionist", "assistant"]}>
+              <RoleGuard roles={["receptionist", "assistant", "admin", "super_admin"]}>
                 <BillingPage />
               </RoleGuard>
             </PrivateRoute>

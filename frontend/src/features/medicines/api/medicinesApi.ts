@@ -8,9 +8,32 @@ export interface PaginatedResponse<T> {
 }
 
 export const MEDICINE_FORMS = [
-  "tablet", "capsule", "syrup", "injection", "cream", "drops", "inhaler", "other",
+  "tablet", "capsule", "syrup", "injection", "cream", "drops", "inhaler",
+  "powder_for_suspension", "solution", "gel", "ointment", "suppository",
+  "patch", "spray", "lotion", "powder", "granules", "other",
 ] as const;
 export type MedicineForm = (typeof MEDICINE_FORMS)[number];
+
+export const MEDICINE_FORM_LABELS: Record<string, string> = {
+  tablet: "Tablet",
+  capsule: "Capsule",
+  syrup: "Syrup",
+  injection: "Injection",
+  cream: "Cream",
+  drops: "Drops",
+  inhaler: "Inhaler",
+  powder_for_suspension: "Powder for Suspension",
+  solution: "Solution",
+  gel: "Gel",
+  ointment: "Ointment",
+  suppository: "Suppository",
+  patch: "Patch",
+  spray: "Spray",
+  lotion: "Lotion",
+  powder: "Powder",
+  granules: "Granules",
+  other: "Other",
+};
 
 // ── Generic medicine types ────────────────────────────────────────────────────
 
@@ -18,20 +41,51 @@ export interface GenericMedicine {
   id: string;
   generic_name: string;
   drug_class: string;
+  therapeutic_class: string;
+  // Clinical fields
+  indications: string;
+  dosage_info: string;
+  administration: string;
   contraindications: string[];
+  side_effects: string;
+  drug_interactions: string;
+  storage: string;
+  pregnancy_notes: string;
+  precautions: string;
+  mode_of_action: string;
   brand_count: number;
 }
 
 export interface CreateGenericPayload {
   generic_name: string;
   drug_class: string;
+  therapeutic_class?: string;
+  indications?: string;
+  dosage_info?: string;
+  administration?: string;
   contraindications?: string[];
+  side_effects?: string;
+  drug_interactions?: string;
+  storage?: string;
+  pregnancy_notes?: string;
+  precautions?: string;
+  mode_of_action?: string;
 }
 
 export interface UpdateGenericPayload {
   generic_name?: string;
   drug_class?: string;
+  therapeutic_class?: string;
+  indications?: string;
+  dosage_info?: string;
+  administration?: string;
   contraindications?: string[];
+  side_effects?: string;
+  drug_interactions?: string;
+  storage?: string;
+  pregnancy_notes?: string;
+  precautions?: string;
+  mode_of_action?: string;
 }
 
 // ── Brand medicine types ──────────────────────────────────────────────────────
@@ -43,6 +97,8 @@ export interface BrandMedicine {
   manufacturer: string;
   strength: string;
   form: string;
+  mrp: number | null;
+  product_code: string;
   is_active: boolean;
 }
 
@@ -52,6 +108,8 @@ export interface CreateBrandPayload {
   manufacturer: string;
   strength: string;
   form: string;
+  mrp?: number | null;
+  product_code?: string;
   is_active?: boolean;
 }
 
@@ -60,6 +118,8 @@ export interface UpdateBrandPayload {
   manufacturer?: string;
   strength?: string;
   form?: string;
+  mrp?: number | null;
+  product_code?: string;
   is_active?: boolean;
 }
 

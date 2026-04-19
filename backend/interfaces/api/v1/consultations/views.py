@@ -32,6 +32,7 @@ def _consultation_to_dict(c: Consultation) -> Dict[str, Any]:
         "appointment_id": str(c.appointment_id),
         "patient_id": str(c.patient_id),
         "doctor_id": str(c.doctor_id),
+        "appointment_doctor_id": str(c.appointment_doctor_id) if c.appointment_doctor_id else str(c.doctor_id),
         "chief_complaints": c.chief_complaints,
         "clinical_findings": c.clinical_findings,
         "diagnosis": c.diagnosis,
@@ -55,13 +56,16 @@ def _consultation_to_dict(c: Consultation) -> Dict[str, Any]:
 
 # ── Views ─────────────────────────────────────────────────────────────────────
 
+CLINICAL_ROLES = {"doctor", "assistant_doctor"}
+
+
 @extend_schema(tags=["consultations"])
 class ConsultationListView(APIView):
     """
     GET  /consultations/  — list/fetch consultations (filter by appointment_id or patient_id)
-    POST /consultations/  — start a new consultation
+    POST /consultations/  — start a new consultation (clinical staff only)
     """
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         summary="List consultations",
@@ -111,6 +115,11 @@ class ConsultationListView(APIView):
         responses={201: StartConsultationResponseSerializer},
     )
     def post(self, request: Request) -> Response:
+        if getattr(request.user, "role", "") not in CLINICAL_ROLES:
+            return Response(
+                {"error": "Only clinical staff can start consultations"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = StartConsultationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
@@ -132,10 +141,10 @@ class ConsultationListView(APIView):
 @extend_schema(tags=["consultations"])
 class ConsultationDetailView(APIView):
     """
-    GET   /consultations/<id>/  — retrieve a single consultation
-    PATCH /consultations/<id>/  — update text fields while still a draft
+    GET   /consultations/<id>/  — retrieve a single consultation (any authenticated user)
+    PATCH /consultations/<id>/  — update text fields while still a draft (clinical staff only)
     """
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         summary="Get consultation",
@@ -159,6 +168,11 @@ class ConsultationDetailView(APIView):
         responses={200: ConsultationResponseSerializer},
     )
     def patch(self, request: Request, consultation_id: uuid.UUID) -> Response:
+        if getattr(request.user, "role", "") not in CLINICAL_ROLES:
+            return Response(
+                {"error": "Only clinical staff can update consultations"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = UpdateConsultationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data

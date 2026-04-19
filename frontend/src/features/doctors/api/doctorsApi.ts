@@ -83,6 +83,7 @@ export interface ListDoctorParams {
   speciality_id?: string;
   is_available?: boolean;
   search?: string;
+  user_id?: string;
 }
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -112,6 +113,12 @@ export const doctorProfilesApi = {
 
   get: (id: string) =>
     apiClient.get<DoctorProfile>(`/doctors/profiles/${id}/`).then((r) => r.data),
+
+  /** Fetch the doctor profile for a given user UUID (returns null if not found). */
+  getByUserId: (userId: string) =>
+    apiClient
+      .get<DoctorProfile[]>("/doctors/profiles/", { params: { user_id: userId } })
+      .then((r) => r.data[0] ?? null),
 
   create: (payload: CreateDoctorPayload) =>
     apiClient

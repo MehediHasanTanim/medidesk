@@ -181,7 +181,7 @@ class PatientHistoryView(APIView):
         from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
         from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
         from infrastructure.repositories.django_prescription_repository import DjangoPrescriptionRepository
-        from infrastructure.orm.models.test_order_model import ReportDocumentModel
+        from infrastructure.orm.models.test_order_model import ReportDocumentModel, TestOrderModel
 
         patient_repo = DjangoPatientRepository()
         patient = patient_repo.get_by_id(patient_id)
@@ -205,6 +205,27 @@ class PatientHistoryView(APIView):
             }
             for a in appointments
         ]
+
+        # Pre-fetch all test orders for this patient keyed by consultation_id
+        test_orders_qs = (
+            TestOrderModel.objects
+            .filter(patient_id=patient_id)
+            .select_related("ordered_by")
+        )
+        test_orders_by_consultation: dict = {}
+        for o in test_orders_qs:
+            key = str(o.consultation_id)
+            test_orders_by_consultation.setdefault(key, []).append({
+                "id": str(o.id),
+                "test_name": o.test_name,
+                "lab_name": o.lab_name or "",
+                "notes": o.notes or "",
+                "ordered_by_name": o.ordered_by.full_name if o.ordered_by else "",
+                "ordered_at": o.ordered_at.isoformat() if o.ordered_at else None,
+                "is_completed": o.is_completed,
+                "completed_at": o.completed_at.isoformat() if o.completed_at else None,
+                "approval_status": o.approval_status,
+            })
 
         # Consultations + prescriptions
         consultations = DjangoConsultationRepository().get_by_patient(patient_id, limit=30)
@@ -253,6 +274,7 @@ class PatientHistoryView(APIView):
                 "created_at": c.created_at.isoformat() if c.created_at else None,
                 "completed_at": c.completed_at.isoformat() if c.completed_at else None,
                 "prescription": prescription,
+                "test_orders": test_orders_by_consultation.get(str(c.id), []),
             })
 
         # Reports
@@ -261,7 +283,7 @@ class PatientHistoryView(APIView):
             {
                 "id": str(r.id),
                 "category": r.category,
-                "file_url": request.build_absolute_uri(r.file.url),
+                "file_url": r.file.url,
                 "original_filename": r.original_filename,
                 "uploaded_by_name": r.uploaded_by.full_name if r.uploaded_by else "",
                 "uploaded_at": r.uploaded_at.isoformat(),

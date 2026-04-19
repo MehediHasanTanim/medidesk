@@ -49,7 +49,7 @@ from interfaces.api.v1.medicines.views import (
     ManufacturerListView,
     ManufacturerDetailView,
 )
-from interfaces.api.v1.reports.views import ReportUploadView
+from interfaces.api.v1.reports.views import ReportUploadView, ReportFileView
 from interfaces.api.v1.prescriptions.views import (
     PrescriptionView,
     PrescriptionDetailView,
@@ -58,6 +58,12 @@ from interfaces.api.v1.prescriptions.views import (
     PendingPrescriptionsView,
 )
 from interfaces.api.v1.billing.views import InvoiceView, PaymentView, InvoiceDetailView
+from interfaces.api.v1.test_orders.views import (
+    ConsultationTestOrdersView,
+    TestOrderDetailView,
+    PatientTestOrdersView,
+    PendingTestOrdersView,
+)
 from interfaces.api.v1.users.views import UserListView, UserDetailView, DoctorsListView
 from interfaces.api.v1.chambers.views import ChamberListView, ChamberDetailView
 
@@ -109,8 +115,15 @@ urlpatterns = [
     path("invoices/<uuid:invoice_id>/", InvoiceDetailView.as_view(), name="invoice_detail"),
     path("payments/", PaymentView.as_view(), name="record_payment"),
 
+    # ── Lab test orders ───────────────────────────────────────────────────────
+    path("consultations/<uuid:consultation_id>/test-orders/", ConsultationTestOrdersView.as_view(), name="consultation_test_orders"),
+    path("test-orders/pending/", PendingTestOrdersView.as_view(), name="pending_test_orders"),
+    path("test-orders/", PatientTestOrdersView.as_view(), name="patient_test_orders"),
+    path("test-orders/<uuid:order_id>/", TestOrderDetailView.as_view(), name="test_order_detail"),
+
     # ── Reports ───────────────────────────────────────────────────────────────
     path("reports/", ReportUploadView.as_view(), name="reports"),
+    path("reports/<uuid:report_id>/file/", ReportFileView.as_view(), name="report_file"),
 
     # ── Medicines ─────────────────────────────────────────────────────────────
     path("medicines/search/", MedicineSearchView.as_view(), name="medicine_search"),

@@ -5,7 +5,7 @@ import AppShell from "@/shared/components/AppShell";
 import Toast, { useToast } from "@/shared/components/Toast";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import { useAuthStore } from "@/features/auth/store/authStore";
-import { appointmentsApi, type QueueItem } from "@/features/appointments/api/appointmentsApi";
+import { appointmentsApi, type QueueItem, type AppointmentListItem } from "@/features/appointments/api/appointmentsApi";
 import {
   consultationsApi,
   type StartConsultationPayload,
@@ -13,8 +13,11 @@ import {
 
 const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   in_progress: { bg: "#059669", color: "#fff" },
-  in_queue: { bg: colors.primary, color: "#fff" },
-  confirmed: { bg: "#d97706", color: "#fff" },
+  in_queue:    { bg: colors.primary, color: "#fff" },
+  confirmed:   { bg: "#d97706", color: "#fff" },
+  completed:   { bg: "#6b7280", color: "#fff" },
+  cancelled:   { bg: "#dc2626", color: "#fff" },
+  no_show:     { bg: "#9ca3af", color: "#fff" },
 };
 
 // ── Start Consultation Modal ──────────────────────────────────────────────────
@@ -121,17 +124,34 @@ export default function QueuePage() {
   const { toast, dismiss } = useToast();
   const [startingItem, setStartingItem] = useState<QueueItem | null>(null);
 
-  const { data, isLoading, refetch } = useQuery({
+  // Active queue — confirmed / in_queue / in_progress
+  const { data, isLoading, refetch: refetchQueue } = useQuery({
     queryKey: ["queue-live", today],
     queryFn: () => appointmentsApi.getQueue(today),
     refetchInterval: 30_000,
     staleTime: 0,
   });
 
+  // Completed today — for billing staff to navigate to closed consultations
+  const { data: completedData, refetch: refetchCompleted } = useQuery({
+    queryKey: ["queue-completed", today],
+    queryFn: () => appointmentsApi.list({ date: today, status: "completed", limit: 100 }),
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+
+  const completedItems: AppointmentListItem[] = completedData?.results ?? [];
+
   const handleStarted = (appointmentId: string) => {
     setStartingItem(null);
     qc.invalidateQueries({ queryKey: ["queue-live", today] });
+    qc.invalidateQueries({ queryKey: ["queue-completed", today] });
     navigate(`/consultations/${appointmentId}`);
+  };
+
+  const handleRefresh = () => {
+    refetchQueue();
+    refetchCompleted();
   };
 
   return (
@@ -158,7 +178,7 @@ export default function QueuePage() {
             </p>
           </div>
           <button
-            onClick={() => refetch()}
+            onClick={handleRefresh}
             style={{ padding: "9px 20px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontWeight: 600, fontSize: font.base }}
           >
             Refresh
@@ -167,6 +187,7 @@ export default function QueuePage() {
 
         {isLoading && <p style={{ color: colors.textMuted }}>Loading queue…</p>}
 
+        {/* ── Active queue ── */}
         <div style={{ display: "grid", gap: 12 }}>
           {data?.queue?.map((item: QueueItem) => {
             const ss = STATUS_STYLES[item.status];
@@ -210,41 +231,37 @@ export default function QueuePage() {
                   {item.status.replace(/_/g, " ")}
                 </span>
 
-                {/* Action buttons — clinical staff only */}
-                {isClinical && (
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                    {/* Start — opens the chief complaints modal which starts the consultation */}
-                    {["confirmed", "in_queue"].includes(item.status) && (
-                      <button
-                        onClick={() => setStartingItem(item)}
-                        style={{
-                          padding: "5px 14px",
-                          background: "#fef3c7", color: "#92400e",
-                          border: "1px solid #fde68a",
-                          borderRadius: radius.md, cursor: "pointer",
-                          fontSize: font.sm, fontWeight: 600,
-                        }}
-                      >
-                        Start
-                      </button>
-                    )}
-                    {/* Open — navigate to the active consultation */}
-                    {item.status === "in_progress" && (
-                      <button
-                        onClick={() => navigate(`/consultations/${item.id}`)}
-                        style={{
-                          padding: "5px 14px",
-                          background: "#eff6ff", color: colors.primary,
-                          border: `1px solid #bfdbfe`,
-                          borderRadius: radius.md, cursor: "pointer",
-                          fontSize: font.sm, fontWeight: 600,
-                        }}
-                      >
-                        Open
-                      </button>
-                    )}
-                  </div>
-                )}
+                {/* Action buttons */}
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  {isClinical && ["confirmed", "in_queue"].includes(item.status) && (
+                    <button
+                      onClick={() => setStartingItem(item)}
+                      style={{
+                        padding: "5px 14px",
+                        background: "#fef3c7", color: "#92400e",
+                        border: "1px solid #fde68a",
+                        borderRadius: radius.md, cursor: "pointer",
+                        fontSize: font.sm, fontWeight: 600,
+                      }}
+                    >
+                      Start
+                    </button>
+                  )}
+                  {item.status === "in_progress" && (
+                    <button
+                      onClick={() => navigate(`/consultations/${item.id}`)}
+                      style={{
+                        padding: "5px 14px",
+                        background: "#eff6ff", color: colors.primary,
+                        border: `1px solid #bfdbfe`,
+                        borderRadius: radius.md, cursor: "pointer",
+                        fontSize: font.sm, fontWeight: 600,
+                      }}
+                    >
+                      Open
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -255,6 +272,76 @@ export default function QueuePage() {
             </p>
           )}
         </div>
+
+        {/* ── Completed today ── */}
+        {completedItems.length > 0 && (
+          <div style={{ marginTop: 36 }}>
+            <h2 style={{ margin: "0 0 14px", fontSize: font.md, fontWeight: 700, color: colors.text }}>
+              Completed Today
+              <span style={{ marginLeft: 8, fontSize: font.sm, fontWeight: 500, color: colors.textMuted }}>
+                ({completedItems.length})
+              </span>
+            </h2>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              {completedItems.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: radius.lg,
+                    padding: "14px 20px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 20,
+                  }}
+                >
+                  {/* Token */}
+                  <div style={{ fontSize: 24, fontWeight: 700, color: colors.textMuted, minWidth: 60, textAlign: "center" }}>
+                    {item.token_number != null ? `#${item.token_number}` : "—"}
+                  </div>
+
+                  {/* Patient info */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text }}>
+                      {item.patient_name}
+                    </div>
+                    <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
+                      {item.patient_phone} · {item.appointment_type.replace("_", " ")} ·{" "}
+                      {new Date(item.scheduled_at).toLocaleTimeString("en-BD", { hour: "2-digit", minute: "2-digit" })}
+                      {item.doctor_name && ` · Dr. ${item.doctor_name}`}
+                    </div>
+                  </div>
+
+                  {/* Completed badge */}
+                  <span style={{
+                    background: "#f3f4f6", color: "#6b7280",
+                    border: "1px solid #e5e7eb",
+                    padding: "3px 10px", borderRadius: 999,
+                    fontSize: font.sm, fontWeight: 500, whiteSpace: "nowrap",
+                  }}>
+                    ✓ Completed
+                  </span>
+
+                  {/* View button — visible to all roles */}
+                  <button
+                    onClick={() => navigate(`/consultations/${item.id}`)}
+                    style={{
+                      padding: "5px 14px", flexShrink: 0,
+                      background: colors.primaryLight, color: colors.primary,
+                      border: `1px solid #bfdbfe`,
+                      borderRadius: radius.md, cursor: "pointer",
+                      fontSize: font.sm, fontWeight: 600,
+                    }}
+                  >
+                    View →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

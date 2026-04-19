@@ -21,87 +21,102 @@ from interfaces.api.v1.billing.serializers import (
     RecordPaymentSerializer,
     UpdateInvoiceSerializer,
 )
-from interfaces.permissions import RolePermission
-
-
-# ── Helper ────────────────────────────────────────────────────────────────────
-
-def _invoice_to_dict(invoice) -> dict:
-    return {
-        "invoice_id": str(invoice.id),
-        "invoice_number": invoice.invoice_number,
-        "patient_id": str(invoice.patient_id),
-        "consultation_id": str(invoice.consultation_id) if invoice.consultation_id else None,
-        "status": invoice.status.value,
-        "subtotal": str(invoice.subtotal.amount),
-        "discount_percent": str(invoice.discount_percent),
-        "total_due": str(invoice.total_due.amount),
-        "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
-        "item_count": len(invoice.items),
-        "items": [
-            {
-                "description": item.description,
-                "quantity": item.quantity,
-                "unit_price": str(item.unit_price.amount),
-                "total": str(item.total.amount),
-            }
-            for item in invoice.items
-        ],
-    }
 
 
 # ── Views ─────────────────────────────────────────────────────────────────────
 
+BILLING_STAFF_ROLES = {"receptionist", "assistant", "admin", "super_admin"}
+
+
+def _invoice_summary(inv) -> dict:
+    return {
+        "invoice_id": str(inv.id),
+        "invoice_number": inv.invoice_number,
+        "patient_id": str(inv.patient_id),
+        "consultation_id": str(inv.consultation_id) if inv.consultation_id else None,
+        "status": inv.status.value,
+        "subtotal": str(inv.subtotal.amount),
+        "discount_percent": str(inv.discount_percent),
+        "total_due": str(inv.total_due.amount),
+        "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        "item_count": len(inv.items),
+    }
+
+
 @extend_schema(tags=["billing"])
 class InvoiceView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "admin"])]
+    # GET is open to all authenticated users so any role can check billing status on
+    # a consultation. POST is restricted to billing staff (checked inline).
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="List invoices for a patient",
-        description="Returns all invoices for a given patient, newest first.",
+        summary="List invoices",
+        description=(
+            "Filter by **patient_id** to list all invoices for a patient (billing staff only), "
+            "or by **consultation_id** to get the invoice linked to a specific consultation "
+            "(any authenticated user — used to show billing status on the consultation page)."
+        ),
         responses={200: InvoiceSummarySerializer(many=True)},
     )
     def get(self, request: Request) -> Response:
+        consultation_id_str = request.query_params.get("consultation_id")
         patient_id_str = request.query_params.get("patient_id")
-        if not patient_id_str:
+
+        if not consultation_id_str and not patient_id_str:
             return Response(
-                {"error": "patient_id query param is required"},
+                {"error": "Provide patient_id or consultation_id query param"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # ── By consultation — any authenticated role ──────────────────────────
+        if consultation_id_str:
+            try:
+                consultation_id = uuid.UUID(consultation_id_str)
+            except ValueError:
+                return Response({"error": "Invalid consultation_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+            with DjangoUnitOfWork() as uow:
+                inv = uow.billing.get_invoice_by_consultation(consultation_id)
+
+            return Response([_invoice_summary(inv)] if inv else [])
+
+        # ── By patient — billing staff only ──────────────────────────────────
+        role = getattr(request.user, "role", "")
+        if role not in BILLING_STAFF_ROLES:
+            return Response(
+                {"error": "Only billing staff can list invoices by patient"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
-            patient_id = uuid.UUID(patient_id_str)
+            patient_id = uuid.UUID(patient_id_str)  # type: ignore[arg-type]
         except ValueError:
             return Response({"error": "Invalid patient_id"}, status=status.HTTP_400_BAD_REQUEST)
 
         with DjangoUnitOfWork() as uow:
             invoices = uow.billing.get_invoices_by_patient(patient_id)
 
-        return Response([
-            {
-                "invoice_id": str(inv.id),
-                "invoice_number": inv.invoice_number,
-                "patient_id": str(inv.patient_id),
-                "status": inv.status.value,
-                "subtotal": str(inv.subtotal.amount),
-                "discount_percent": str(inv.discount_percent),
-                "total_due": str(inv.total_due.amount),
-                "created_at": inv.created_at.isoformat() if inv.created_at else None,
-                "item_count": len(inv.items),
-            }
-            for inv in invoices
-        ])
+        return Response([_invoice_summary(inv) for inv in invoices])
 
     @extend_schema(
         summary="Create invoice",
         description=(
             "Create a new invoice for a patient. "
-            "Optionally link it to a consultation. "
-            "The invoice is immediately set to **issued** status."
+            "Optionally link it to a consultation via **consultation_id**. "
+            "The invoice is immediately set to **issued** status. "
+            "Billing staff only."
         ),
         request=CreateInvoiceSerializer,
         responses={201: CreateInvoiceResponseSerializer},
     )
     def post(self, request: Request) -> Response:
+        role = getattr(request.user, "role", "")
+        if role not in BILLING_STAFF_ROLES:
+            return Response(
+                {"error": "Only billing staff can create invoices"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = CreateInvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -149,7 +164,16 @@ class InvoiceDetailView(APIView):
             payments = uow.billing.get_payments_by_invoice(invoice_id)
 
         return Response({
-            **_invoice_to_dict(invoice),
+            **_invoice_summary(invoice),
+            "items": [
+                {
+                    "description": item.description,
+                    "quantity": item.quantity,
+                    "unit_price": str(item.unit_price.amount),
+                    "total": str(item.total.amount),
+                }
+                for item in invoice.items
+            ],
             "payments": [
                 {
                     "payment_id": str(p.id),
@@ -201,19 +225,27 @@ class InvoiceDetailView(APIView):
 
 @extend_schema(tags=["billing"])
 class PaymentView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "admin"])]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         summary="Record a payment",
         description=(
             "Record a payment against an issued or partially-paid invoice. "
             "Payment amount must be > 0 and cannot exceed the remaining balance. "
-            "Invoice status is automatically updated to **paid** or **partially_paid**."
+            "Invoice status is automatically updated to **paid** or **partially_paid**. "
+            "Billing staff only (receptionist, assistant, admin, super_admin)."
         ),
         request=RecordPaymentSerializer,
         responses={201: RecordPaymentResponseSerializer},
     )
     def post(self, request: Request) -> Response:
+        role = getattr(request.user, "role", "")
+        if role not in BILLING_STAFF_ROLES:
+            return Response(
+                {"error": "Only billing staff can record payments"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = RecordPaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

@@ -49,7 +49,17 @@ def _generic_to_dict(g: GenericMedicine, brand_count: int = 0) -> Dict[str, Any]
         "id": str(g.id),
         "generic_name": g.generic_name,
         "drug_class": g.drug_class,
+        "therapeutic_class": g.therapeutic_class,
+        "indications": g.indications,
+        "dosage_info": g.dosage_info,
+        "administration": g.administration,
         "contraindications": g.contraindications,
+        "side_effects": g.side_effects,
+        "drug_interactions": g.drug_interactions,
+        "storage": g.storage,
+        "pregnancy_notes": g.pregnancy_notes,
+        "precautions": g.precautions,
+        "mode_of_action": g.mode_of_action,
         "brand_count": brand_count,
     }
 
@@ -62,6 +72,8 @@ def _brand_to_dict(b: BrandMedicine) -> Dict[str, Any]:
         "manufacturer": b.manufacturer,
         "strength": b.strength,
         "form": b.form,
+        "mrp": b.mrp,
+        "product_code": b.product_code,
         "is_active": b.is_active,
     }
 
@@ -132,7 +144,17 @@ class GenericMedicineListView(APIView):
             id=uuid.uuid4(),
             generic_name=data["generic_name"].strip(),
             drug_class=data["drug_class"].strip(),
+            therapeutic_class=data.get("therapeutic_class", "").strip(),
+            indications=data.get("indications", ""),
+            dosage_info=data.get("dosage_info", ""),
+            administration=data.get("administration", ""),
             contraindications=data.get("contraindications", []),
+            side_effects=data.get("side_effects", ""),
+            drug_interactions=data.get("drug_interactions", ""),
+            storage=data.get("storage", ""),
+            pregnancy_notes=data.get("pregnancy_notes", ""),
+            precautions=data.get("precautions", ""),
+            mode_of_action=data.get("mode_of_action", ""),
         )
         saved = repo.create_generic(generic)
         return Response(_generic_to_dict(saved, brand_count=0), status=status.HTTP_201_CREATED)
@@ -181,8 +203,28 @@ class GenericMedicineDetailView(APIView):
             generic.generic_name = data["generic_name"].strip()
         if "drug_class" in data:
             generic.drug_class = data["drug_class"].strip()
+        if "therapeutic_class" in data:
+            generic.therapeutic_class = data["therapeutic_class"].strip()
+        if "indications" in data:
+            generic.indications = data["indications"]
+        if "dosage_info" in data:
+            generic.dosage_info = data["dosage_info"]
+        if "administration" in data:
+            generic.administration = data["administration"]
         if "contraindications" in data:
             generic.contraindications = data["contraindications"]
+        if "side_effects" in data:
+            generic.side_effects = data["side_effects"]
+        if "drug_interactions" in data:
+            generic.drug_interactions = data["drug_interactions"]
+        if "storage" in data:
+            generic.storage = data["storage"]
+        if "pregnancy_notes" in data:
+            generic.pregnancy_notes = data["pregnancy_notes"]
+        if "precautions" in data:
+            generic.precautions = data["precautions"]
+        if "mode_of_action" in data:
+            generic.mode_of_action = data["mode_of_action"]
 
         saved = repo.update_generic(generic)
         brand_count = repo.brand_count_for_generic(generic_id)
@@ -287,6 +329,8 @@ class BrandMedicineListView(APIView):
             manufacturer=data["manufacturer"].strip(),
             strength=data["strength"].strip(),
             form=data["form"],
+            mrp=data.get("mrp"),
+            product_code=data.get("product_code", ""),
             is_active=data.get("is_active", True),
         )
         saved = repo.create_brand(brand)
@@ -339,6 +383,10 @@ class BrandMedicineDetailView(APIView):
             brand.strength = data["strength"].strip()
         if "form" in data:
             brand.form = data["form"]
+        if "mrp" in data:
+            brand.mrp = data["mrp"]
+        if "product_code" in data:
+            brand.product_code = data["product_code"]
         if "is_active" in data:
             brand.is_active = data["is_active"]
 

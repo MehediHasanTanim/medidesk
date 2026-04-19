@@ -23,7 +23,19 @@ class GenericMedicineModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     generic_name = models.CharField(max_length=255, unique=True, db_index=True)
     drug_class = models.CharField(max_length=100, db_index=True)
+    therapeutic_class = models.CharField(max_length=150, blank=True, default="")
+
+    # Clinical information (long text fields — all optional)
+    indications = models.TextField(blank=True, default="")
+    dosage_info = models.TextField(blank=True, default="")
+    administration = models.TextField(blank=True, default="")
     contraindications = models.JSONField(default=list)
+    side_effects = models.TextField(blank=True, default="")
+    drug_interactions = models.TextField(blank=True, default="")
+    storage = models.TextField(blank=True, default="")
+    pregnancy_notes = models.TextField(blank=True, default="")
+    precautions = models.TextField(blank=True, default="")
+    mode_of_action = models.TextField(blank=True, default="")
 
     class Meta:
         app_label = "infrastructure"
@@ -42,6 +54,16 @@ class BrandMedicineModel(models.Model):
         ("cream", "Cream"),
         ("drops", "Drops"),
         ("inhaler", "Inhaler"),
+        ("powder_for_suspension", "Powder for Suspension"),
+        ("solution", "Solution"),
+        ("gel", "Gel"),
+        ("ointment", "Ointment"),
+        ("suppository", "Suppository"),
+        ("patch", "Patch"),
+        ("spray", "Spray"),
+        ("lotion", "Lotion"),
+        ("powder", "Powder"),
+        ("granules", "Granules"),
         ("other", "Other"),
     ]
 
@@ -49,8 +71,10 @@ class BrandMedicineModel(models.Model):
     generic = models.ForeignKey(GenericMedicineModel, on_delete=models.PROTECT, related_name="brands")
     brand_name = models.CharField(max_length=255, db_index=True)
     manufacturer = models.CharField(max_length=255)
-    strength = models.CharField(max_length=50)
-    form = models.CharField(max_length=20, choices=FORM_CHOICES)
+    strength = models.CharField(max_length=100)
+    form = models.CharField(max_length=30, choices=FORM_CHOICES)
+    mrp = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    product_code = models.CharField(max_length=50, blank=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
 
     class Meta:

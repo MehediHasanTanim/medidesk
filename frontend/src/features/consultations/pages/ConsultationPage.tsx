@@ -19,6 +19,8 @@ import {
 import type { MedicineSearchResult } from "@/features/medicines/api/medicinesApi";
 import MedicineSearchInputShared from "@/features/prescriptions/components/MedicineSearchInput";
 import PrescriptionEditForm from "@/features/prescriptions/components/PrescriptionEditForm";
+import ConsultationInvoiceSection from "@/features/billing/components/ConsultationInvoiceSection";
+import LabTestsSection from "@/features/testOrders/components/LabTestsSection";
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -732,43 +734,58 @@ export default function ConsultationPage() {
 
         {/* ── Completed view ── */}
         {isCompleted ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            {/* Left: clinical summary */}
-            <div style={cardStyle}>
-              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Consultation Summary</h2>
-              <Field label="Chief Complaints" value={consultation.chief_complaints} />
-              <Field label="Clinical Findings" value={consultation.clinical_findings} />
-              <Field label="Diagnosis" value={consultation.diagnosis} />
-              <Field label="Notes" value={consultation.notes} />
-              {consultation.completed_at && (
-                <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 8 }}>
-                  Completed: {new Date(consultation.completed_at).toLocaleString("en-BD")}
-                </div>
-              )}
-            </div>
-
-            {/* Right: vitals + prescription */}
-            <div>
-              {v && (
-                <div style={cardStyle}>
-                  <h2 style={{ margin: "0 0 12px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Vitals</h2>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {v.bp_display && <VitalsPill label="Blood Pressure" value={v.bp_display} />}
-                    {v.pulse && <VitalsPill label="Pulse" value={`${v.pulse} bpm`} />}
-                    {v.temperature && <VitalsPill label="Temperature" value={`${v.temperature} °C`} />}
-                    {v.spo2 && <VitalsPill label="SpO₂" value={`${v.spo2}%`} />}
-                    {v.weight && <VitalsPill label="Weight" value={`${v.weight} kg`} />}
-                    {v.height && <VitalsPill label="Height" value={`${v.height} cm`} />}
-                    {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
-                  </div>
-                </div>
-              )}
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              {/* Left: clinical summary */}
               <div style={cardStyle}>
-                <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
-                <PrescriptionSection consultation={consultation} isCompleted={isCompleted} userRole={user?.role ?? ""} />
+                <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Consultation Summary</h2>
+                <Field label="Chief Complaints" value={consultation.chief_complaints} />
+                <Field label="Clinical Findings" value={consultation.clinical_findings} />
+                <Field label="Diagnosis" value={consultation.diagnosis} />
+                <Field label="Notes" value={consultation.notes} />
+                {consultation.completed_at && (
+                  <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 8 }}>
+                    Completed: {new Date(consultation.completed_at).toLocaleString("en-BD")}
+                  </div>
+                )}
+              </div>
+
+              {/* Right: vitals + prescription */}
+              <div>
+                {v && (
+                  <div style={cardStyle}>
+                    <h2 style={{ margin: "0 0 12px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Vitals</h2>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {v.bp_display && <VitalsPill label="Blood Pressure" value={v.bp_display} />}
+                      {v.pulse && <VitalsPill label="Pulse" value={`${v.pulse} bpm`} />}
+                      {v.temperature && <VitalsPill label="Temperature" value={`${v.temperature} °C`} />}
+                      {v.spo2 && <VitalsPill label="SpO₂" value={`${v.spo2}%`} />}
+                      {v.weight && <VitalsPill label="Weight" value={`${v.weight} kg`} />}
+                      {v.height && <VitalsPill label="Height" value={`${v.height} cm`} />}
+                      {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
+                    </div>
+                  </div>
+                )}
+                <div style={cardStyle}>
+                  <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
+                  <PrescriptionSection consultation={consultation} isCompleted={isCompleted} userRole={user?.role ?? ""} />
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* Lab Tests — full width below the grid */}
+            <div style={cardStyle}>
+              <LabTestsSection consultationId={consultation.id} userRole={user?.role ?? ""} />
+            </div>
+
+            {/* Invoice — full width below the grid */}
+            <div style={cardStyle}>
+              <ConsultationInvoiceSection
+                consultation={consultation}
+                userRole={user?.role ?? ""}
+              />
+            </div>
+          </>
         ) : (
           /* ── Draft / in-progress view ── */
           <>
@@ -801,6 +818,11 @@ export default function ConsultationPage() {
             <div style={cardStyle}>
               <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
               <PrescriptionSection consultation={consultation} isCompleted={false} userRole={user?.role ?? ""} />
+            </div>
+
+            {/* Lab Tests — full width below prescription */}
+            <div style={cardStyle}>
+              <LabTestsSection consultationId={consultation.id} userRole={user?.role ?? ""} />
             </div>
           </>
         )}

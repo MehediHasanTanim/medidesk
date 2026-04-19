@@ -79,6 +79,12 @@ export const billingApi = {
       .get<InvoiceSummary[]>("/invoices/", { params: { patient_id: patientId } })
       .then((r) => r.data),
 
+  /** GET /invoices/?consultation_id= — returns the invoice for a consultation, or null. */
+  getByConsultation: (consultationId: string) =>
+    apiClient
+      .get<InvoiceSummary[]>("/invoices/", { params: { consultation_id: consultationId } })
+      .then((r) => r.data[0] ?? null),
+
   getInvoice: (invoiceId: string) =>
     apiClient.get<InvoiceDetail>(`/invoices/${invoiceId}/`).then((r) => r.data),
 

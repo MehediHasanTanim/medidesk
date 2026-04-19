@@ -120,18 +120,34 @@ class DoctorProfileListView(APIView):
         summary="List doctor profiles",
         description=(
             "Returns all doctor profiles enriched with user info, speciality, and chambers. "
-            "Filterable by speciality, availability, and name search."
+            "Filterable by speciality, availability, name search, or user_id (returns at most one)."
         ),
         parameters=[
             OpenApiParameter("speciality_id", str, description="Filter by speciality UUID."),
             OpenApiParameter("is_available", bool, description="Filter by availability."),
             OpenApiParameter("search", str, description="Search by name, qualifications, or speciality."),
+            OpenApiParameter("user_id", str, description="Return the profile for this user UUID (at most one result)."),
         ],
         responses={200: DoctorProfileResponseSerializer(many=True)},
     )
     def get(self, request: Request) -> Response:
         self.permission_classes = [IsAuthenticated]
         self.check_permissions(request)
+
+        # Shortcut: look up a single profile by the doctor's user UUID
+        user_id_str = request.query_params.get("user_id")
+        if user_id_str:
+            try:
+                user_id = uuid.UUID(user_id_str)
+            except ValueError:
+                return Response({"error": "Invalid user_id"}, status=status.HTTP_400_BAD_REQUEST)
+            from infrastructure.repositories.django_doctor_repository import DjangoDoctorRepository
+            bare = DjangoDoctorRepository().get_profile_by_user_id(user_id)
+            if not bare:
+                return Response([])
+            # Enrich via use case so serializer gets all required fields
+            enriched = Container.get_doctor_profile().execute(str(bare.id))
+            return Response(DoctorProfileResponseSerializer([enriched.__dict__], many=True).data)
 
         speciality_id = request.query_params.get("speciality_id")
         is_available_str = request.query_params.get("is_available")

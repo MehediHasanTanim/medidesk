@@ -41,7 +41,17 @@ class DjangoMedicineRepository(IMedicineRepository):
             id=generic.id,
             generic_name=generic.generic_name,
             drug_class=generic.drug_class,
+            therapeutic_class=generic.therapeutic_class,
+            indications=generic.indications,
+            dosage_info=generic.dosage_info,
+            administration=generic.administration,
             contraindications=generic.contraindications,
+            side_effects=generic.side_effects,
+            drug_interactions=generic.drug_interactions,
+            storage=generic.storage,
+            pregnancy_notes=generic.pregnancy_notes,
+            precautions=generic.precautions,
+            mode_of_action=generic.mode_of_action,
         )
         return self._generic_to_domain(model)
 
@@ -49,7 +59,17 @@ class DjangoMedicineRepository(IMedicineRepository):
         GenericMedicineModel.objects.filter(id=generic.id).update(
             generic_name=generic.generic_name,
             drug_class=generic.drug_class,
+            therapeutic_class=generic.therapeutic_class,
+            indications=generic.indications,
+            dosage_info=generic.dosage_info,
+            administration=generic.administration,
             contraindications=generic.contraindications,
+            side_effects=generic.side_effects,
+            drug_interactions=generic.drug_interactions,
+            storage=generic.storage,
+            pregnancy_notes=generic.pregnancy_notes,
+            precautions=generic.precautions,
+            mode_of_action=generic.mode_of_action,
         )
         return generic
 
@@ -118,6 +138,8 @@ class DjangoMedicineRepository(IMedicineRepository):
             manufacturer=brand.manufacturer,
             strength=brand.strength,
             form=brand.form,
+            mrp=brand.mrp,
+            product_code=brand.product_code,
             is_active=brand.is_active,
         )
         return self._brand_to_domain(model)
@@ -128,6 +150,8 @@ class DjangoMedicineRepository(IMedicineRepository):
             manufacturer=brand.manufacturer,
             strength=brand.strength,
             form=brand.form,
+            mrp=brand.mrp,
+            product_code=brand.product_code,
             is_active=brand.is_active,
         )
         return brand
@@ -142,6 +166,25 @@ class DjangoMedicineRepository(IMedicineRepository):
     # ── Mappers ───────────────────────────────────────────────────────────────
 
     @staticmethod
+    def _generic_to_domain(m: GenericMedicineModel) -> GenericMedicine:
+        return GenericMedicine(
+            id=m.id,
+            generic_name=m.generic_name,
+            drug_class=m.drug_class,
+            therapeutic_class=m.therapeutic_class or "",
+            indications=m.indications or "",
+            dosage_info=m.dosage_info or "",
+            administration=m.administration or "",
+            contraindications=m.contraindications or [],
+            side_effects=m.side_effects or "",
+            drug_interactions=m.drug_interactions or "",
+            storage=m.storage or "",
+            pregnancy_notes=m.pregnancy_notes or "",
+            precautions=m.precautions or "",
+            mode_of_action=m.mode_of_action or "",
+        )
+
+    @staticmethod
     def _brand_to_domain(m: BrandMedicineModel) -> BrandMedicine:
         return BrandMedicine(
             id=m.id,
@@ -150,14 +193,7 @@ class DjangoMedicineRepository(IMedicineRepository):
             manufacturer=m.manufacturer,
             strength=m.strength,
             form=m.form,
+            mrp=float(m.mrp) if m.mrp is not None else None,
+            product_code=m.product_code or "",
             is_active=m.is_active,
-        )
-
-    @staticmethod
-    def _generic_to_domain(m: GenericMedicineModel) -> GenericMedicine:
-        return GenericMedicine(
-            id=m.id,
-            generic_name=m.generic_name,
-            drug_class=m.drug_class,
-            contraindications=m.contraindications or [],
         )

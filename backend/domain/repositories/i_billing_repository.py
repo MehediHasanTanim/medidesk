@@ -21,6 +21,9 @@ class IBillingRepository(ABC):
     def get_payments_by_invoice(self, invoice_id: UUID) -> List[Payment]: ...
 
     @abstractmethod
+    def get_invoice_by_consultation(self, consultation_id: UUID) -> Optional[Invoice]: ...
+
+    @abstractmethod
     def get_invoices_by_patient(self, patient_id: UUID, limit: int = 50) -> List[Invoice]: ...
 
     @abstractmethod

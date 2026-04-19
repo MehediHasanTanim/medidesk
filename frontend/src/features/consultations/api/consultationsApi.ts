@@ -54,6 +54,8 @@ export interface Consultation {
   appointment_id: string;
   patient_id: string;
   doctor_id: string;
+  /** The attending physician from the appointment (may differ from doctor_id when an assistant started the consultation). */
+  appointment_doctor_id: string;
   chief_complaints: string;
   clinical_findings: string;
   diagnosis: string;
