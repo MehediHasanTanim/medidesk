@@ -46,6 +46,15 @@ interface Consultation {
   } | null;
 }
 
+interface AppointmentEntry {
+  id: string;
+  scheduled_at: string;
+  appointment_type: string;
+  status: string;
+  token_number: number | null;
+  notes: string;
+}
+
 interface Report {
   id: string;
   category: string;
@@ -56,19 +65,75 @@ interface Report {
   notes: string;
 }
 
+interface PrescriptionEvent {
+  prescription_id: string;
+  status: string;
+  follow_up_date: string | null;
+  items: PrescriptionItem[];
+  consultation_id: string;
+}
+
+interface PatientNote {
+  id: string;
+  content: string;
+  created_by_name: string;
+  created_by_role: string;
+  created_at: string;
+}
+
 interface PatientHistory {
   patient: Patient;
-  appointments: Array<{
-    id: string;
-    scheduled_at: string;
-    appointment_type: string;
-    status: string;
-    token_number: number | null;
-    notes: string;
-  }>;
+  past_diagnoses: string[];
+  appointments: AppointmentEntry[];
   consultations: Consultation[];
   reports: Report[];
+  notes: PatientNote[];
 }
+
+type TimelineEvent =
+  | { kind: "consultation"; date: string; data: Consultation }
+  | { kind: "prescription"; date: string; data: PrescriptionEvent }
+  | { kind: "appointment"; date: string; data: AppointmentEntry }
+  | { kind: "report"; date: string; data: Report }
+  | { kind: "note"; date: string; data: PatientNote };
+
+const TYPE_META = {
+  consultation: {
+    icon: "🩺",
+    bg: "#eff6ff",
+    border: "#bfdbfe",
+    textColor: "#1d4ed8",
+    label: "Consultation",
+  },
+  prescription: {
+    icon: "💊",
+    bg: "#fdf4ff",
+    border: "#e9d5ff",
+    textColor: "#7c3aed",
+    label: "Prescription",
+  },
+  appointment: {
+    icon: "📅",
+    bg: "#f5f3ff",
+    border: "#ddd6fe",
+    textColor: "#6d28d9",
+    label: "Appointment",
+  },
+  report: {
+    icon: "📄",
+    bg: "#f0fdf4",
+    border: "#bbf7d0",
+    textColor: "#15803d",
+    label: "Report",
+  },
+  note: {
+    icon: "📝",
+    bg: "#fffbeb",
+    border: "#fde68a",
+    textColor: "#92400e",
+    label: "Note",
+  },
+} as const;
 
 const REPORT_CATEGORY_LABELS: Record<string, string> = {
   blood_test: "Blood Test",
@@ -87,6 +152,25 @@ const STATUS_COLORS: Record<string, string> = {
   no_show: colors.danger,
 };
 
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-BD", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function fmtDateTime(iso: string) {
+  return new Date(iso).toLocaleString("en-BD", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
 function VitalsCard({ vitals }: { vitals: Vitals }) {
   const items = [
@@ -112,7 +196,6 @@ function VitalsCard({ vitals }: { vitals: Vitals }) {
   );
 }
 
-// Badge helpers (shared with approval page pattern)
 function TestOrderBadge({ order }: { order: TestOrder }) {
   if (order.is_completed) {
     return (
@@ -138,31 +221,36 @@ function ConsultationCard({ c }: { c: Consultation }) {
     queryKey: ["test-orders", c.id],
     queryFn: () => testOrdersApi.listByConsultation(c.id),
     enabled: open,
-    // Don't show rejected tests in history
     select: (orders) => orders.filter((o) => o.approval_status !== "rejected"),
   });
 
-  const title = c.created_at
-    ? new Date(c.created_at).toLocaleDateString("en-BD", { year: "numeric", month: "long", day: "numeric" })
-    : "Consultation";
-
   return (
-    <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, marginBottom: 20, overflow: "hidden" }}>
+    <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, overflow: "hidden" }}>
       {/* Collapsible header */}
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
           width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "16px 24px", background: "none", border: "none",
+          padding: "14px 20px", background: "none", border: "none",
           borderBottom: open ? `1px solid ${colors.border}` : "none",
           cursor: "pointer",
         }}
       >
-        <span style={{ fontWeight: 600, fontSize: font.md, color: colors.text }}>
-          {title}
+        <span style={{ fontWeight: 600, fontSize: font.base, color: colors.text }}>
+          Clinical Details
+          {c.prescription && (
+            <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: font.sm, marginLeft: 10 }}>
+              · 💊 Rx
+            </span>
+          )}
           {testOrders.length > 0 && (
             <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: font.sm, marginLeft: 10 }}>
               · 🧪 {testOrders.length} test{testOrders.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {c.is_draft && (
+            <span style={{ marginLeft: 10, background: "#fef9c3", color: "#92400e", fontSize: "11px", fontWeight: 600, padding: "2px 8px", borderRadius: 999, border: "1px solid #fde68a" }}>
+              Draft
             </span>
           )}
         </span>
@@ -170,8 +258,8 @@ function ConsultationCard({ c }: { c: Consultation }) {
       </button>
 
       {open && (
-        <div style={{ padding: "16px 24px" }}>
-          {/* ── 2-column clinical grid ── */}
+        <div style={{ padding: "16px 20px" }}>
+          {/* 2-column clinical grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {/* Left: clinical text */}
             <div>
@@ -201,38 +289,15 @@ function ConsultationCard({ c }: { c: Consultation }) {
               )}
             </div>
 
-            {/* Right: vitals + prescription */}
+            {/* Right: vitals */}
             <div>
               {c.vitals && <VitalsCard vitals={c.vitals} />}
-              {c.prescription && (
-                <div style={{ marginTop: c.vitals ? 16 : 0 }}>
-                  <div style={{ fontSize: font.sm, fontWeight: 600, color: colors.textMuted, marginBottom: 8 }}>PRESCRIPTION</div>
-                  {c.prescription.items.map((item, i) => (
-                    <div key={i} style={{ background: colors.bg, borderRadius: radius.md, padding: "8px 12px", marginBottom: 6, fontSize: font.sm }}>
-                      <div style={{ fontWeight: 600, color: colors.text }}>{item.medicine_name}</div>
-                      <div style={{ color: colors.textMuted, marginTop: 2 }}>
-                        {item.dosage} · {item.duration_days} days · {item.route}
-                        {item.instructions && ` · ${item.instructions}`}
-                      </div>
-                    </div>
-                  ))}
-                  {c.prescription.follow_up_date && (
-                    <div style={{ marginTop: 8, fontSize: font.sm, color: colors.primary }}>
-                      Follow-up: {c.prescription.follow_up_date}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
-          {/* ── Lab tests — full-width row below clinical grid ── */}
+          {/* Lab tests — full-width row below clinical grid */}
           {testOrders.length > 0 && (
-            <div style={{
-              marginTop: 20,
-              borderTop: `1px solid ${colors.border}`,
-              paddingTop: 16,
-            }}>
+            <div style={{ marginTop: 20, borderTop: `1px solid ${colors.border}`, paddingTop: 16 }}>
               <div style={{ fontSize: font.sm, fontWeight: 600, color: colors.textMuted, marginBottom: 10, letterSpacing: "0.05em" }}>
                 🧪 LAB TESTS
               </div>
@@ -271,9 +336,188 @@ function ConsultationCard({ c }: { c: Consultation }) {
   );
 }
 
+function AppointmentCard({ a }: { a: AppointmentEntry }) {
+  return (
+    <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, padding: "14px 20px", display: "flex", alignItems: "flex-start", gap: 16 }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: a.notes ? 6 : 0 }}>
+          <span style={{ fontWeight: 600, color: colors.text, textTransform: "capitalize" }}>
+            {a.appointment_type.replace(/_/g, " ")}
+          </span>
+          {a.token_number != null && (
+            <span style={{ fontSize: font.sm, color: colors.textMuted }}>· Token #{a.token_number}</span>
+          )}
+        </div>
+        {a.notes && (
+          <div style={{ fontSize: font.sm, color: colors.textMuted }}>{a.notes}</div>
+        )}
+      </div>
+      <span style={{
+        color: STATUS_COLORS[a.status] ?? colors.textMuted,
+        fontWeight: 600,
+        fontSize: font.sm,
+        textTransform: "capitalize",
+        flexShrink: 0,
+      }}>
+        {a.status.replace(/_/g, " ")}
+      </span>
+    </div>
+  );
+}
+
+function PrescriptionCard({ prx }: { prx: PrescriptionEvent }) {
+  const isDraft = prx.status === "draft";
+  return (
+    <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${colors.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{
+          fontSize: "11px", fontWeight: 700, padding: "2px 10px", borderRadius: 999,
+          background: isDraft ? "#fef9c3" : "#dcfce7",
+          color: isDraft ? "#92400e" : "#15803d",
+          border: `1px solid ${isDraft ? "#fde68a" : "#bbf7d0"}`,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}>
+          {isDraft ? "Draft" : "Active"}
+        </span>
+        {prx.follow_up_date && (
+          <span style={{ fontSize: font.sm, color: colors.primary, fontWeight: 500 }}>
+            Follow-up: {prx.follow_up_date}
+          </span>
+        )}
+      </div>
+
+      {/* Medicine list */}
+      <div style={{ padding: "12px 20px" }}>
+        {prx.items.length === 0 ? (
+          <div style={{ color: colors.textMuted, fontSize: font.sm }}>No medicines added.</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: font.sm }}>
+            <thead>
+              <tr style={{ background: colors.bg }}>
+                {["Medicine", "Dosage (M-A-E)", "Duration", "Route", "Instructions"].map((h) => (
+                  <th key={h} style={{ padding: "6px 10px", textAlign: "left", fontWeight: 600, color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {prx.items.map((item, i) => (
+                <tr key={i} style={{ borderBottom: i < prx.items.length - 1 ? `1px solid ${colors.borderLight}` : "none" }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 600, color: colors.text }}>{item.medicine_name}</td>
+                  <td style={{ padding: "8px 10px", color: colors.text }}>{item.dosage}</td>
+                  <td style={{ padding: "8px 10px", color: colors.text }}>{item.duration_days}d</td>
+                  <td style={{ padding: "8px 10px", color: colors.textMuted, textTransform: "capitalize" }}>{item.route}</td>
+                  <td style={{ padding: "8px 10px", color: colors.textMuted, fontStyle: item.instructions ? "normal" : "italic" }}>
+                    {item.instructions || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReportCard({ r }: { r: Report }) {
+  return (
+    <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, padding: 16, border: `1px solid ${colors.border}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ background: "#f0fdf4", color: "#15803d", padding: "2px 10px", borderRadius: 999, fontSize: "12px", fontWeight: 600, border: "1px solid #bbf7d0" }}>
+              {REPORT_CATEGORY_LABELS[r.category] ?? r.category}
+            </span>
+          </div>
+          <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.original_filename}>
+            {r.original_filename}
+          </div>
+          <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 2 }}>
+            {r.uploaded_by_name && `Uploaded by ${r.uploaded_by_name}`}
+          </div>
+          {r.notes && (
+            <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 4, fontStyle: "italic" }}>{r.notes}</div>
+          )}
+        </div>
+        <span style={{ fontSize: "20px", marginLeft: 12, flexShrink: 0 }}>📄</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button
+          onClick={() => viewReport(r.id)}
+          style={{
+            flex: 1,
+            padding: "7px 0",
+            background: colors.primaryLight,
+            color: colors.primary,
+            border: `1px solid ${colors.primary}`,
+            borderRadius: radius.md,
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: font.sm,
+          }}
+        >
+          👁 View
+        </button>
+        <button
+          onClick={() => downloadReport(r.id, r.original_filename)}
+          style={{
+            flex: 1,
+            padding: "7px 0",
+            background: colors.white,
+            color: colors.text,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radius.md,
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: font.sm,
+          }}
+        >
+          ⬇ Download
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  doctor: "Doctor",
+  assistant_doctor: "Asst. Doctor",
+  receptionist: "Receptionist",
+  assistant: "Assistant",
+  admin: "Admin",
+  super_admin: "Admin",
+  trainee: "Trainee",
+};
+
+function NoteCard({ note }: { note: PatientNote }) {
+  return (
+    <div style={{
+      background: colors.white,
+      borderRadius: radius.lg,
+      boxShadow: shadow.sm,
+      padding: "14px 20px",
+      borderLeft: `3px solid #fbbf24`,
+    }}>
+      <p style={{ margin: "0 0 10px", fontSize: font.base, color: colors.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+        {note.content}
+      </p>
+      <div style={{ fontSize: font.sm, color: colors.textMuted, display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ fontWeight: 600, color: colors.text }}>{note.created_by_name || "Unknown"}</span>
+        {note.created_by_role && (
+          <span style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 999, padding: "1px 8px", fontSize: "11px", fontWeight: 600, color: colors.textMuted }}>
+            {ROLE_LABELS[note.created_by_role] ?? note.created_by_role}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Report helpers ───────────────────────────────────────────────────────────
+
 async function viewReport(reportId: string) {
-  // Open a blank tab immediately (synchronous) so popup blockers allow it,
-  // then navigate it to the blob URL once the fetch resolves.
   const win = window.open("about:blank", "_blank");
   if (!win) { alert("Popup blocked — please allow popups for this site."); return; }
   try {
@@ -302,6 +546,8 @@ async function downloadReport(reportId: string, filename: string) {
     alert("Failed to download the report. Please try again.");
   }
 }
+
+// ─── Upload panel ─────────────────────────────────────────────────────────────
 
 const UPLOAD_CATEGORIES: { value: ReportCategory; label: string }[] = [
   { value: "blood_test", label: "Blood Test" },
@@ -464,12 +710,10 @@ function UploadPanel({ patientId, onSuccess, onCancel }: {
         />
       </div>
 
-      {/* Error */}
       {error && (
         <div style={{ color: colors.danger, fontSize: font.sm, marginBottom: 12 }}>{error}</div>
       )}
 
-      {/* Actions */}
       <div style={{ display: "flex", gap: 10 }}>
         <button
           onClick={() => mutation.mutate()}
@@ -507,15 +751,108 @@ function UploadPanel({ patientId, onSuccess, onCancel }: {
   );
 }
 
+function AddNotePanel({ patientId, onSuccess, onCancel }: {
+  patientId: string;
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [content, setContent] = useState("");
+  const [error, setError] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiClient.post(`/patients/${patientId}/notes/`, { content }).then((r) => r.data),
+    onSuccess,
+    onError: (err: any) => {
+      setError(err?.response?.data?.error ?? "Failed to save note. Please try again.");
+    },
+  });
+
+  return (
+    <div style={{
+      background: colors.bg,
+      border: `1px solid ${colors.border}`,
+      borderRadius: radius.lg,
+      padding: 20,
+      marginBottom: 20,
+    }}>
+      <h3 style={{ margin: "0 0 12px", fontSize: font.base, fontWeight: 700, color: colors.text }}>
+        Add Note
+      </h3>
+      <textarea
+        value={content}
+        onChange={(e) => { setContent(e.target.value); setError(""); }}
+        placeholder="Enter note — administrative observations, reminders, or anything not part of a formal consultation…"
+        rows={4}
+        autoFocus
+        style={{
+          width: "100%",
+          padding: "10px 14px",
+          border: `1px solid ${colors.border}`,
+          borderRadius: radius.md,
+          fontSize: font.base,
+          color: colors.text,
+          background: colors.white,
+          resize: "vertical",
+          boxSizing: "border-box",
+          outline: "none",
+          fontFamily: "inherit",
+          lineHeight: 1.6,
+          marginBottom: 12,
+        }}
+      />
+      {error && (
+        <div style={{ color: colors.danger, fontSize: font.sm, marginBottom: 10 }}>{error}</div>
+      )}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={!content.trim() || mutation.isPending}
+          style={{
+            padding: "8px 20px",
+            background: !content.trim() || mutation.isPending ? colors.border : colors.primary,
+            color: colors.white,
+            border: "none",
+            borderRadius: radius.md,
+            cursor: !content.trim() || mutation.isPending ? "not-allowed" : "pointer",
+            fontWeight: 600,
+            fontSize: font.base,
+          }}
+        >
+          {mutation.isPending ? "Saving…" : "Save Note"}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={mutation.isPending}
+          style={{
+            padding: "8px 16px",
+            background: "none",
+            color: colors.textMuted,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radius.md,
+            cursor: "pointer",
+            fontSize: font.base,
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function PatientHistoryPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const [activeTab, setActiveTab] = useState<"consultations" | "appointments" | "reports">("consultations");
   const [showUpload, setShowUpload] = useState(false);
+  const [showAddNote, setShowAddNote] = useState(false);
 
   const canUpload = user?.role === "doctor" || user?.role === "assistant_doctor";
+  const canAddNote = user?.role !== "trainee";
 
   const { data, isLoading, error } = useQuery<PatientHistory>({
     queryKey: ["patient-history", patientId],
@@ -530,7 +867,52 @@ export default function PatientHistoryPage() {
     return <AppShell><div style={{ padding: 40, color: colors.danger }}>Failed to load patient history.</div></AppShell>;
   }
 
-  const { patient, consultations, appointments, reports } = data;
+  const { patient, past_diagnoses, consultations, appointments, reports, notes } = data;
+
+  // Appointments that already have a linked consultation — skip them from the
+  // timeline so we don't double-count the same visit.
+  const consultedAppointmentIds = new Set(consultations.map((c) => c.appointment_id));
+
+  const timelineEvents: TimelineEvent[] = [
+    ...consultations.map((c) => ({
+      kind: "consultation" as const,
+      date: c.created_at ?? c.completed_at ?? "",
+      data: c,
+    })),
+    // Prescriptions extracted as standalone entries — same date as their
+    // consultation so they sort adjacently; consultation is inserted first in
+    // the array, so stable sort keeps it immediately above its prescription.
+    ...consultations
+      .filter((c) => c.prescription !== null)
+      .map((c) => ({
+        kind: "prescription" as const,
+        date: c.created_at ?? c.completed_at ?? "",
+        data: {
+          prescription_id: c.prescription!.prescription_id,
+          status: c.prescription!.status,
+          follow_up_date: c.prescription!.follow_up_date,
+          items: c.prescription!.items,
+          consultation_id: c.id,
+        } satisfies PrescriptionEvent,
+      })),
+    ...appointments
+      .filter((a) => !consultedAppointmentIds.has(a.id))
+      .map((a) => ({
+        kind: "appointment" as const,
+        date: a.scheduled_at,
+        data: a,
+      })),
+    ...reports.map((r) => ({
+      kind: "report" as const,
+      date: r.uploaded_at,
+      data: r,
+    })),
+    ...notes.map((n) => ({
+      kind: "note" as const,
+      date: n.created_at,
+      data: n,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <AppShell>
@@ -555,14 +937,31 @@ export default function PatientHistoryPage() {
                 {patient.date_of_birth && ` · DOB: ${patient.date_of_birth}`}
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {patient.allergies.length > 0 && patient.allergies.map((a) => (
+                {patient.allergies.map((a) => (
                   <span key={a} style={{ background: "#fef2f2", color: colors.danger, border: "1px solid #fecaca", padding: "2px 10px", borderRadius: 999, fontSize: "12px", fontWeight: 600 }}>⚠ {a}</span>
                 ))}
-                {patient.chronic_diseases.length > 0 && patient.chronic_diseases.map((d) => (
+                {patient.chronic_diseases.map((d) => (
                   <span key={d} style={{ background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", padding: "2px 10px", borderRadius: 999, fontSize: "12px", fontWeight: 600 }}>{d}</span>
                 ))}
               </div>
+
+              {past_diagnoses.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                    Past Diagnoses
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {past_diagnoses.map((d) => (
+                      <span key={d} style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", padding: "2px 10px", borderRadius: 999, fontSize: "12px", fontWeight: 500 }}>
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Summary stats */}
             <div style={{ display: "flex", gap: 24, textAlign: "center" }}>
               {[
                 { label: "Visits", value: consultations.length },
@@ -578,171 +977,158 @@ export default function PatientHistoryPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 2, marginBottom: 20, background: colors.borderLight, borderRadius: radius.md, padding: 4, width: "fit-content" }}>
-          {(["consultations", "appointments", "reports"] as const).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              style={{
-                padding: "6px 18px", border: "none", borderRadius: radius.sm, cursor: "pointer",
-                fontSize: font.base, fontWeight: 500, textTransform: "capitalize",
-                background: activeTab === tab ? colors.white : "transparent",
-                color: activeTab === tab ? colors.primary : colors.textMuted,
-                boxShadow: activeTab === tab ? shadow.sm : "none",
-              }}>
-              {tab}
-            </button>
-          ))}
+        {/* Timeline header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: "0 0 2px", fontSize: font.lg, fontWeight: 700, color: colors.text }}>
+              Visit Timeline
+            </h2>
+            <div style={{ fontSize: font.sm, color: colors.textMuted }}>
+              {timelineEvents.length === 0
+                ? "No history recorded yet"
+                : `${timelineEvents.length} ${timelineEvents.length === 1 ? "entry" : "entries"} · most recent first`}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canAddNote && !showAddNote && !showUpload && (
+              <button
+                onClick={() => setShowAddNote(true)}
+                style={{
+                  padding: "8px 16px",
+                  background: colors.white,
+                  color: colors.text,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: radius.md,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: font.sm,
+                }}
+              >
+                📝 Add Note
+              </button>
+            )}
+            {canUpload && !showUpload && !showAddNote && (
+              <button
+                onClick={() => setShowUpload(true)}
+                style={{
+                  padding: "8px 16px",
+                  background: colors.primary,
+                  color: colors.white,
+                  border: "none",
+                  borderRadius: radius.md,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: font.sm,
+                }}
+              >
+                + Upload Report
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Consultations tab */}
-        {activeTab === "consultations" && (
-          consultations.length === 0
-            ? <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, padding: 40, textAlign: "center", color: colors.textMuted }}>No consultation records found.</div>
-            : consultations.map((c) => <ConsultationCard key={c.id} c={c} />)
+        {/* Upload panel */}
+        {showUpload && patientId && (
+          <UploadPanel
+            patientId={patientId}
+            onSuccess={() => {
+              setShowUpload(false);
+              queryClient.invalidateQueries({ queryKey: ["patient-history", patientId] });
+            }}
+            onCancel={() => setShowUpload(false)}
+          />
         )}
 
-        {/* Appointments tab */}
-        {activeTab === "appointments" && (
-          <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, overflow: "hidden" }}>
-            {appointments.length === 0
-              ? <div style={{ padding: 40, textAlign: "center", color: colors.textMuted }}>No appointments found.</div>
-              : (
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: colors.bg }}>
-                      {["Date & Time", "Type", "Token", "Status", "Notes"].map((h) => (
-                        <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: font.sm, fontWeight: 600, color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {appointments.map((a) => (
-                      <tr key={a.id} style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
-                        <td style={{ padding: "10px 16px", fontSize: font.base }}>{new Date(a.scheduled_at).toLocaleString("en-BD")}</td>
-                        <td style={{ padding: "10px 16px", fontSize: font.base, textTransform: "capitalize" }}>{a.appointment_type.replace("_", " ")}</td>
-                        <td style={{ padding: "10px 16px", fontSize: font.base }}>{a.token_number ?? "—"}</td>
-                        <td style={{ padding: "10px 16px" }}>
-                          <span style={{ color: STATUS_COLORS[a.status] ?? colors.textMuted, fontWeight: 600, fontSize: font.sm, textTransform: "capitalize" }}>
-                            {a.status.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 16px", color: colors.textMuted, fontSize: font.sm }}>{a.notes || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+        {/* Add note panel */}
+        {showAddNote && patientId && (
+          <AddNotePanel
+            patientId={patientId}
+            onSuccess={() => {
+              setShowAddNote(false);
+              queryClient.invalidateQueries({ queryKey: ["patient-history", patientId] });
+            }}
+            onCancel={() => setShowAddNote(false)}
+          />
+        )}
+
+        {/* Unified timeline */}
+        {timelineEvents.length === 0 ? (
+          <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, padding: 40, textAlign: "center", color: colors.textMuted }}>
+            No history recorded yet. Appointments, consultations, and reports will appear here.
           </div>
-        )}
+        ) : (
+          <div style={{ position: "relative" }}>
+            {/* Vertical connector line */}
+            <div style={{
+              position: "absolute",
+              left: 17,
+              top: 36,
+              bottom: 36,
+              width: 2,
+              background: colors.borderLight,
+            }} />
 
-        {/* Reports tab */}
-        {activeTab === "reports" && (
-          <div>
-            {/* Header row with Upload button */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <span style={{ fontSize: font.base, fontWeight: 600, color: colors.textMuted }}>
-                {reports.length} report{reports.length !== 1 ? "s" : ""}
-              </span>
-              {canUpload && !showUpload && (
-                <button
-                  onClick={() => setShowUpload(true)}
-                  style={{
-                    padding: "7px 16px",
-                    background: colors.primary,
-                    color: colors.white,
-                    border: "none",
-                    borderRadius: radius.md,
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontSize: font.sm,
-                  }}
+            {timelineEvents.map((event, i) => {
+              const meta = TYPE_META[event.kind];
+              const dateLabel = event.date ? fmtDate(event.date) : "—";
+              const timeLabel = event.kind === "appointment" ? fmtDateTime(event.date) : null;
+
+              return (
+                <div
+                  key={`${event.kind}-${event.kind === "prescription" ? event.data.prescription_id : event.data.id}-${i}`}
+
+                  style={{ display: "flex", gap: 16, marginBottom: 24 }}
                 >
-                  + Upload Report
-                </button>
-              )}
-            </div>
-
-            {/* Upload panel */}
-            {showUpload && patientId && (
-              <UploadPanel
-                patientId={patientId}
-                onSuccess={() => {
-                  setShowUpload(false);
-                  queryClient.invalidateQueries({ queryKey: ["patient-history", patientId] });
-                }}
-                onCancel={() => setShowUpload(false)}
-              />
-            )}
-
-            {/* Report cards */}
-            {reports.length === 0 ? (
-              <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, padding: 40, textAlign: "center", color: colors.textMuted }}>
-                No reports uploaded yet.
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-                {reports.map((r) => (
-                  <div key={r.id} style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.sm, padding: 18, border: `1px solid ${colors.border}`, display: "flex", flexDirection: "column", gap: 0 }}>
-                    {/* Header row */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <span style={{ background: colors.primaryLight, color: colors.primary, padding: "2px 10px", borderRadius: 999, fontSize: "12px", fontWeight: 600 }}>
-                        {REPORT_CATEGORY_LABELS[r.category] ?? r.category}
-                      </span>
-                      <span style={{ fontSize: "20px" }}>📄</span>
-                    </div>
-
-                    {/* Filename */}
-                    <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.original_filename}>
-                      {r.original_filename}
-                    </div>
-
-                    {/* Meta */}
-                    <div style={{ fontSize: font.sm, color: colors.textMuted, marginBottom: r.notes ? 4 : 12 }}>
-                      {new Date(r.uploaded_at).toLocaleDateString("en-BD")} · {r.uploaded_by_name}
-                    </div>
-                    {r.notes && (
-                      <div style={{ fontSize: font.sm, color: colors.textMuted, marginBottom: 12, fontStyle: "italic" }}>{r.notes}</div>
-                    )}
-
-                    {/* Action buttons */}
-                    <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
-                      <button
-                        onClick={() => viewReport(r.id)}
-                        style={{
-                          flex: 1,
-                          padding: "7px 0",
-                          background: colors.primaryLight,
-                          color: colors.primary,
-                          border: `1px solid ${colors.primary}`,
-                          borderRadius: radius.md,
-                          cursor: "pointer",
-                          fontWeight: 600,
-                          fontSize: font.sm,
-                        }}
-                      >
-                        👁 View
-                      </button>
-                      <button
-                        onClick={() => downloadReport(r.id, r.original_filename)}
-                        style={{
-                          flex: 1,
-                          padding: "7px 0",
-                          background: colors.white,
-                          color: colors.text,
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: radius.md,
-                          cursor: "pointer",
-                          fontWeight: 600,
-                          fontSize: font.sm,
-                        }}
-                      >
-                        ⬇ Download
-                      </button>
-                    </div>
+                  {/* Dot indicator */}
+                  <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    background: meta.bg,
+                    border: `2px solid ${meta.border}`,
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                    position: "relative",
+                    zIndex: 1,
+                  }}>
+                    {meta.icon}
                   </div>
-                ))}
-              </div>
-            )}
+
+                  {/* Content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Date + type label */}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: font.base, color: colors.text }}>
+                        {timeLabel ?? dateLabel}
+                      </span>
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: meta.textColor,
+                        background: meta.bg,
+                        border: `1px solid ${meta.border}`,
+                        padding: "1px 8px",
+                        borderRadius: 999,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                      }}>
+                        {meta.label}
+                      </span>
+                    </div>
+
+                    {/* Card */}
+                    {event.kind === "consultation" && <ConsultationCard c={event.data} />}
+                    {event.kind === "prescription" && <PrescriptionCard prx={event.data} />}
+                    {event.kind === "appointment" && <AppointmentCard a={event.data} />}
+                    {event.kind === "report" && <ReportCard r={event.data} />}
+                    {event.kind === "note" && <NoteCard note={event.data} />}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

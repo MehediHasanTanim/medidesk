@@ -10,7 +10,9 @@ import {
   type Consultation,
   type VitalsPayload,
   type UpdateConsultationPayload,
+  type StartConsultationPayload,
 } from "@/features/consultations/api/consultationsApi";
+import { appointmentsApi } from "@/features/appointments/api/appointmentsApi";
 import {
   prescriptionsApi,
   type PrescriptionItemPayload,
@@ -654,12 +656,46 @@ export default function ConsultationPage() {
   const { user } = useAuthStore();
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
+  const isClinical = ["doctor", "assistant_doctor"].includes(user?.role ?? "");
+
   const { data: consultation, isLoading, error, refetch } = useQuery<Consultation | null>({
     queryKey: ["consultation-by-appointment", appointmentId],
     queryFn: () => consultationsApi.getByAppointment(appointmentId!),
     enabled: !!appointmentId,
     staleTime: 0,
   });
+
+  // Needed when consultation doesn't exist yet so clinical users can start one
+  const { data: appointment } = useQuery({
+    queryKey: ["appointment-detail", appointmentId],
+    queryFn: () => appointmentsApi.get(appointmentId!),
+    enabled: !!appointmentId,
+    staleTime: 60_000,
+  });
+
+  const [chiefComplaints, setChiefComplaints] = useState("");
+  const [startError, setStartError] = useState("");
+
+  const startMutation = useMutation({
+    mutationFn: (payload: StartConsultationPayload) => consultationsApi.start(payload),
+    onSuccess: () => {
+      setChiefComplaints("");
+      setStartError("");
+      qc.invalidateQueries({ queryKey: ["queue-live"] });
+      refetch();
+    },
+    onError: (e: any) => setStartError(e.response?.data?.error ?? "Failed to start consultation"),
+  });
+
+  const handleStartConsultation = () => {
+    if (!chiefComplaints.trim()) return setStartError("Chief complaints are required");
+    if (!appointment) return;
+    startMutation.mutate({
+      appointment_id: appointmentId!,
+      patient_id: appointment.patient_id,
+      chief_complaints: chiefComplaints,
+    });
+  };
 
   const handleCompleted = () => {
     setShowCompleteModal(false);
@@ -676,6 +712,56 @@ export default function ConsultationPage() {
     return <AppShell><div style={{ padding: 40, color: colors.danger }}>Failed to load consultation.</div></AppShell>;
   }
   if (!consultation) {
+    // Clinical users can start the consultation inline rather than hitting a dead-end
+    if (isClinical) {
+      return (
+        <AppShell>
+          <div style={{ padding: "40px", maxWidth: 560 }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: font.lg, fontWeight: 700, color: colors.text }}>
+              Start Consultation
+            </h2>
+            {appointment && (
+              <p style={{ margin: "0 0 20px", fontSize: font.sm, color: colors.textMuted }}>
+                Patient: <strong>{appointment.patient_name}</strong> · {appointment.patient_phone}
+              </p>
+            )}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: font.sm, fontWeight: 600, color: colors.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                Chief Complaints *
+              </label>
+              <textarea
+                autoFocus
+                value={chiefComplaints}
+                onChange={(e) => setChiefComplaints(e.target.value)}
+                rows={4}
+                placeholder="Describe the patient's chief complaints…"
+                style={{ ...inputStyle, resize: "vertical", fontFamily: font.family }}
+              />
+            </div>
+            {startError && (
+              <div style={{ background: "#fef2f2", color: colors.danger, border: "1px solid #fecaca", borderRadius: radius.md, padding: "10px 14px", marginBottom: 14, fontSize: font.sm }}>
+                {startError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => navigate("/queue")}
+                style={{ padding: "9px 20px", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}
+              >
+                ← Back to Queue
+              </button>
+              <button
+                onClick={handleStartConsultation}
+                disabled={startMutation.isPending}
+                style={{ padding: "9px 22px", background: "#d97706", color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600, opacity: startMutation.isPending ? 0.7 : 1 }}
+              >
+                {startMutation.isPending ? "Starting…" : "Start Consultation"}
+              </button>
+            </div>
+          </div>
+        </AppShell>
+      );
+    }
     return (
       <AppShell>
         <div style={{ padding: 40, color: colors.textMuted }}>
@@ -724,7 +810,7 @@ export default function ConsultationPage() {
           }}>
             {isCompleted ? "✓ Completed" : "In Progress"}
           </span>
-          {!isCompleted && (
+          {!isCompleted && isClinical && (
             <button onClick={() => setShowCompleteModal(true)}
               style={{ padding: "9px 22px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600, flexShrink: 0 }}>
               Complete Consultation
@@ -750,7 +836,7 @@ export default function ConsultationPage() {
                 )}
               </div>
 
-              {/* Right: vitals + prescription */}
+              {/* Right: vitals + prescription (prescription visible to clinical staff only) */}
               <div>
                 {v && (
                   <div style={cardStyle}>
@@ -766,10 +852,12 @@ export default function ConsultationPage() {
                     </div>
                   </div>
                 )}
-                <div style={cardStyle}>
-                  <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
-                  <PrescriptionSection consultation={consultation} isCompleted={isCompleted} userRole={user?.role ?? ""} />
-                </div>
+                {isClinical && (
+                  <div style={cardStyle}>
+                    <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
+                    <PrescriptionSection consultation={consultation} isCompleted={isCompleted} userRole={user?.role ?? ""} />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -793,7 +881,21 @@ export default function ConsultationPage() {
               {/* Clinical Notes */}
               <div style={cardStyle}>
                 <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Clinical Notes</h2>
-                <NotesForm consultationId={consultation.id} initial={consultation} onSaved={() => refetch()} />
+                {isClinical ? (
+                  <NotesForm consultationId={consultation.id} initial={consultation} onSaved={() => refetch()} />
+                ) : (
+                  <div>
+                    <Field label="Chief Complaints" value={consultation.chief_complaints} />
+                    <Field label="Clinical Findings" value={consultation.clinical_findings} />
+                    <Field label="Diagnosis" value={consultation.diagnosis} />
+                    <Field label="Notes / Instructions" value={consultation.notes} />
+                    {!consultation.chief_complaints && !consultation.diagnosis && (
+                      <p style={{ margin: 0, color: colors.textMuted, fontSize: font.sm }}>
+                        No clinical notes recorded yet.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Vitals */}
@@ -810,17 +912,27 @@ export default function ConsultationPage() {
                     {v.bmi && <VitalsPill label="BMI" value={v.bmi} />}
                   </div>
                 )}
-                <VitalsForm consultationId={consultation.id} initial={consultation.vitals} onSaved={() => refetch()} />
+                {isClinical ? (
+                  <VitalsForm consultationId={consultation.id} initial={consultation.vitals} onSaved={() => refetch()} />
+                ) : (
+                  !v && (
+                    <p style={{ margin: 0, color: colors.textMuted, fontSize: font.sm }}>
+                      No vitals recorded yet.
+                    </p>
+                  )
+                )}
               </div>
             </div>
 
-            {/* Prescription — full width below */}
-            <div style={cardStyle}>
-              <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
-              <PrescriptionSection consultation={consultation} isCompleted={false} userRole={user?.role ?? ""} />
-            </div>
+            {/* Prescription — clinical staff only (prescription API is clinical-only) */}
+            {isClinical && (
+              <div style={cardStyle}>
+                <h2 style={{ margin: "0 0 16px", fontSize: font.md, fontWeight: 700, color: colors.text }}>Prescription</h2>
+                <PrescriptionSection consultation={consultation} isCompleted={false} userRole={user?.role ?? ""} />
+              </div>
+            )}
 
-            {/* Lab Tests — full width below prescription */}
+            {/* Lab Tests — visible to all; add/approve controls hidden for non-clinical via userRole */}
             <div style={cardStyle}>
               <LabTestsSection consultationId={consultation.id} userRole={user?.role ?? ""} />
             </div>

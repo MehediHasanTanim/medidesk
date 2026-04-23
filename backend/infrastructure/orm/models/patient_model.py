@@ -15,6 +15,7 @@ class PatientModel(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     email = models.EmailField(null=True, blank=True)
     national_id = models.CharField(max_length=20, null=True, blank=True)
+    age_years = models.PositiveSmallIntegerField(null=True, blank=True)
     allergies = models.JSONField(default=list)
     chronic_diseases = models.JSONField(default=list)
     family_history = models.TextField(blank=True)

@@ -1,4 +1,4 @@
-export type UserRole = "super_admin" | "admin" | "doctor" | "assistant_doctor" | "receptionist" | "assistant";
+export type UserRole = "super_admin" | "admin" | "doctor" | "assistant_doctor" | "receptionist" | "assistant" | "trainee";
 
 export interface AuthUser {
   id: string;
@@ -28,6 +28,7 @@ export interface UserRecord {
   role: UserRole;
   chamber_ids: string[];
   is_active: boolean;
+  supervisor_doctor_id?: string | null;
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -37,6 +38,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   assistant_doctor: "Assistant Doctor",
   receptionist: "Receptionist",
   assistant: "Assistant",
+  trainee: "Trainee",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -46,6 +48,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   assistant_doctor: "#0891b2",
   receptionist: "#059669",
   assistant: "#d97706",
+  trainee: "#64748b",
 };
 
 export const ALL_ROLES: UserRole[] = [
@@ -55,4 +58,5 @@ export const ALL_ROLES: UserRole[] = [
   "assistant_doctor",
   "receptionist",
   "assistant",
+  "trainee",
 ];

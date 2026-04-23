@@ -23,11 +23,13 @@ class Patient:
     is_active: bool = True
     created_at: Optional[date] = None
 
+    age_years: Optional[int] = None  # fallback when date_of_birth is unknown
+
     @property
     def age(self) -> Optional[int]:
-        if not self.date_of_birth:
-            return None
-        today = date.today()
-        return today.year - self.date_of_birth.year - (
-            (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
-        )
+        if self.date_of_birth:
+            today = date.today()
+            return today.year - self.date_of_birth.year - (
+                (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
+            )
+        return self.age_years

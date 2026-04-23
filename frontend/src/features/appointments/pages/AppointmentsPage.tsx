@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/shared/components/AppShell";
 import Toast, { useToast } from "@/shared/components/Toast";
@@ -10,6 +11,7 @@ import {
   type BookAppointmentPayload,
   type UpdateAppointmentPayload,
 } from "@/features/appointments/api/appointmentsApi";
+import { consultationsApi, type StartConsultationPayload } from "@/features/consultations/api/consultationsApi";
 import { chambersApi } from "@/features/chambers/api/chambersApi";
 import { specialitiesApi, doctorProfilesApi, type DoctorProfile } from "@/features/doctors/api/doctorsApi";
 import apiClient from "@/shared/lib/apiClient";
@@ -28,6 +30,75 @@ const STATUS_COLORS: Record<string, string> = {
 
 const TERMINAL_STATUSES = ["completed", "cancelled", "no_show"];
 
+// ── StartConsultationModal ─────────────────────────────────────────────────
+function StartConsultationModal({
+  appointment,
+  onClose,
+  onStarted,
+}: {
+  appointment: AppointmentListItem;
+  onClose: () => void;
+  onStarted: (appointmentId: string) => void;
+}) {
+  const [chiefComplaints, setChiefComplaints] = useState("");
+  const [error, setError] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: (payload: StartConsultationPayload) => consultationsApi.start(payload),
+    onSuccess: () => onStarted(appointment.id),
+    onError: (e: any) => setError(e.response?.data?.error ?? "Failed to start consultation"),
+  });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      <div style={{ background: colors.white, borderRadius: radius.lg, boxShadow: shadow.lg, width: "min(500px, 96vw)", padding: 28 }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: "18px", fontWeight: 700, color: colors.text }}>
+          Start Consultation
+        </h2>
+        <p style={{ margin: "0 0 20px", fontSize: font.sm, color: colors.textMuted }}>
+          Patient: <strong>{appointment.patient_name}</strong> · {appointment.patient_phone}
+        </p>
+        {error && (
+          <div style={{ background: "#fef2f2", color: colors.danger, border: "1px solid #fecaca", borderRadius: radius.md, padding: "10px 14px", marginBottom: 14, fontSize: font.sm }}>
+            {error}
+          </div>
+        )}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: font.sm, fontWeight: 600, color: colors.textMuted, marginBottom: 4, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
+            Chief Complaints *
+          </label>
+          <textarea
+            autoFocus
+            value={chiefComplaints}
+            onChange={(e) => setChiefComplaints(e.target.value)}
+            rows={4}
+            placeholder="Describe the patient's chief complaints…"
+            style={{ width: "100%", padding: "8px 12px", border: `1px solid ${colors.border}`, borderRadius: radius.md, fontSize: font.base, color: colors.text, resize: "vertical", boxSizing: "border-box" as const }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{ padding: "9px 20px", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              if (!chiefComplaints.trim()) return setError("Chief complaints are required");
+              mutation.mutate({ appointment_id: appointment.id, patient_id: appointment.patient_id, chief_complaints: chiefComplaints });
+            }}
+            disabled={mutation.isPending}
+            style={{ padding: "9px 22px", background: "#d97706", color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600, opacity: mutation.isPending ? 0.7 : 1 }}
+          >
+            {mutation.isPending ? "Starting…" : "Start Consultation"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── BookModal ──────────────────────────────────────────────────────────────
 function BookModal({
   onClose,
@@ -45,9 +116,9 @@ function BookModal({
     full_name: string;
     patient_id: string;
   } | null>(null);
+  const [chamberId, setChamberId] = useState("");   // selected first
   const [specialityId, setSpecialityId] = useState("");
   const [doctorId, setDoctorId] = useState("");
-  const [chamberId, setChamberId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [type, setType] = useState<"new" | "follow_up" | "walk_in">("new");
   const [notes, setNotes] = useState("");
@@ -62,22 +133,56 @@ function BookModal({
     enabled: patientSearch.length > 1,
   });
 
+  // Chambers — loaded immediately
+  const { data: chambersData = [] } = useQuery({
+    queryKey: ["chambers"],
+    queryFn: () => chambersApi.list(),
+  });
+
+  // Specialities — for optional filter (non-clinical roles only)
   const { data: specialities = [] } = useQuery({
     queryKey: ["specialities"],
     queryFn: () => specialitiesApi.list(true),
     enabled: needsDoctorSelect,
   });
 
-  const { data: doctors = [], isFetching: doctorsFetching } = useQuery({
-    queryKey: ["doctors-by-speciality", specialityId],
-    queryFn: () => doctorProfilesApi.list({ speciality_id: specialityId, is_available: true }),
-    enabled: needsDoctorSelect && !!specialityId,
+  // All available doctors — fetched once a chamber is selected
+  const { data: allDoctors = [], isFetching: doctorsFetching } = useQuery({
+    queryKey: ["doctors-available"],
+    queryFn: () => doctorProfilesApi.list({ is_available: true }),
+    enabled: needsDoctorSelect && !!chamberId,
+    staleTime: 2 * 60_000,
   });
 
-  const { data: chambersData } = useQuery({
-    queryKey: ["chambers"],
-    queryFn: () => chambersApi.list(),
+  // Filter to doctors assigned to the selected chamber (+ optional speciality)
+  const filteredDoctors: DoctorProfile[] = !chamberId
+    ? []
+    : allDoctors.filter((d: DoctorProfile) => {
+        const inChamber = d.chamber_ids.includes(chamberId);
+        const matchesSpec = !specialityId || d.speciality_id === specialityId;
+        return inChamber && matchesSpec;
+      });
+
+  // Selected doctor object (non-clinical roles)
+  const selectedDoctor: DoctorProfile | null = needsDoctorSelect
+    ? (filteredDoctors.find((d: DoctorProfile) => d.user_id === doctorId) ?? null)
+    : null;
+
+  // Own profile for clinical roles
+  const { data: ownDoctorProfile = null } = useQuery<DoctorProfile | null>({
+    queryKey: ["own-doctor-profile", user?.id],
+    queryFn: () => doctorProfilesApi.getByUserId(user?.id ?? ""),
+    enabled: !needsDoctorSelect && !!user?.id,
+    staleTime: 5 * 60_000,
   });
+
+  // Doctor whose schedule we display
+  const visitDoctor: DoctorProfile | null = needsDoctorSelect ? selectedDoctor : ownDoctorProfile;
+
+  // Schedule for the selected chamber only
+  const chamberSchedule = chamberId && visitDoctor
+    ? (visitDoctor.chamber_schedules?.find((cs) => cs.chamber_id === chamberId) ?? null)
+    : null;
 
   const qc = useQueryClient();
   const bookMutation = useMutation({
@@ -92,17 +197,59 @@ function BookModal({
   const handleSubmit = () => {
     setError("");
     if (!selectedPatient) return setError("Select a patient");
+    if (!chamberId) return setError("Select a chamber");
     if (!scheduledAt) return setError("Select date & time");
     if (needsDoctorSelect && !doctorId) return setError("Select a doctor");
+
+    // Validate scheduled date/time against doctor's visit schedule for this chamber
+    if (chamberSchedule) {
+      const scheduledDate = new Date(scheduledAt);
+      const DAY_MAP: Record<number, string> = {
+        0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat",
+      };
+      const scheduledDay = DAY_MAP[scheduledDate.getDay()];
+
+      if (
+        chamberSchedule.visit_days.length > 0 &&
+        !chamberSchedule.visit_days.includes(scheduledDay)
+      ) {
+        return setError(
+          `Doctor does not visit on ${scheduledDay}. Visit days: ${chamberSchedule.visit_days.join(", ")}`
+        );
+      }
+
+      const toMins = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        return h * 60 + m;
+      };
+      const fmt12 = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        const period = h < 12 ? "AM" : "PM";
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+      };
+      const apptMins = scheduledDate.getHours() * 60 + scheduledDate.getMinutes();
+
+      if (chamberSchedule.visit_time_start && apptMins < toMins(chamberSchedule.visit_time_start)) {
+        return setError(
+          `Appointment time must be at or after ${fmt12(chamberSchedule.visit_time_start)}`
+        );
+      }
+      if (chamberSchedule.visit_time_end && apptMins > toMins(chamberSchedule.visit_time_end)) {
+        return setError(
+          `Appointment time must be at or before ${fmt12(chamberSchedule.visit_time_end)}`
+        );
+      }
+    }
 
     const payload: BookAppointmentPayload = {
       patient_id: selectedPatient.id,
       scheduled_at: new Date(scheduledAt).toISOString(),
       appointment_type: type,
       notes,
+      chamber_id: chamberId,
     };
     if (needsDoctorSelect) payload.doctor_id = doctorId;
-    if (chamberId) payload.chamber_id = chamberId;
     bookMutation.mutate(payload);
   };
 
@@ -245,20 +392,45 @@ function BookModal({
           )}
         </div>
 
-        {/* Speciality → Doctor cascade — only for non-clinical staff */}
+        {/* Chamber — selected first (required) */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Chamber</label>
+          <select
+            value={chamberId}
+            onChange={(e) => {
+              setChamberId(e.target.value);
+              setDoctorId(""); // reset doctor when chamber changes
+            }}
+            style={inputStyle}
+          >
+            <option value="">Select chamber…</option>
+            {chambersData.map((c: any) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Speciality (optional filter) → Doctor — only for non-clinical staff */}
         {needsDoctorSelect && (
           <>
             <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Speciality</label>
+              <label style={labelStyle}>Speciality (optional)</label>
               <select
                 value={specialityId}
                 onChange={(e) => {
                   setSpecialityId(e.target.value);
                   setDoctorId("");
                 }}
-                style={inputStyle}
+                disabled={!chamberId}
+                style={{
+                  ...inputStyle,
+                  background: !chamberId ? colors.bg : colors.white,
+                  color: !chamberId ? colors.textMuted : colors.text,
+                }}
               >
-                <option value="">Select speciality…</option>
+                <option value="">All specialities</option>
                 {specialities.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -269,23 +441,23 @@ function BookModal({
               <select
                 value={doctorId}
                 onChange={(e) => setDoctorId(e.target.value)}
-                disabled={!specialityId || doctorsFetching}
+                disabled={!chamberId || doctorsFetching}
                 style={{
                   ...inputStyle,
-                  background: !specialityId ? colors.bg : colors.white,
-                  color: !specialityId ? colors.textMuted : colors.text,
+                  background: !chamberId ? colors.bg : colors.white,
+                  color: !chamberId ? colors.textMuted : colors.text,
                 }}
               >
                 <option value="">
-                  {!specialityId
-                    ? "Select a speciality first…"
+                  {!chamberId
+                    ? "Select a chamber first…"
                     : doctorsFetching
                     ? "Loading…"
-                    : doctors.length === 0
-                    ? "No available doctors"
+                    : filteredDoctors.length === 0
+                    ? "No available doctors in this chamber"
                     : "Select doctor…"}
                 </option>
-                {doctors.map((d: DoctorProfile) => (
+                {filteredDoctors.map((d: DoctorProfile) => (
                   <option key={d.user_id} value={d.user_id}>
                     {d.full_name} · {d.role === "assistant_doctor" ? "Asst. Doctor" : "Doctor"}
                   </option>
@@ -295,22 +467,52 @@ function BookModal({
           </>
         )}
 
-        {/* Chamber (optional) */}
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Chamber (optional)</label>
-          <select
-            value={chamberId}
-            onChange={(e) => setChamberId(e.target.value)}
-            style={inputStyle}
+        {/* Visit Schedule — shows only the schedule for the selected chamber */}
+        {chamberSchedule && chamberSchedule.visit_days.length > 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "10px 14px",
+              background: "#f0f9ff",
+              border: "1px solid #bae6fd",
+              borderRadius: radius.md,
+            }}
           >
-            <option value="">No chamber</option>
-            {chambersData?.map((c: any) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+            <div
+              style={{
+                fontSize: font.sm,
+                fontWeight: 600,
+                color: "#0369a1",
+                marginBottom: 8,
+              }}
+            >
+              📅 Visit Schedule
+            </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+              {chamberSchedule.visit_days.map((day) => (
+                <span
+                  key={day}
+                  style={{
+                    padding: "2px 9px",
+                    background: "#dbeafe",
+                    color: "#1d4ed8",
+                    borderRadius: radius.sm,
+                    fontSize: font.sm,
+                    fontWeight: 600,
+                  }}
+                >
+                  {day}
+                </span>
+              ))}
+              {chamberSchedule.visit_time_start && (
+                <span style={{ fontSize: font.sm, color: "#0369a1", marginLeft: 4 }}>
+                  ⏰ {chamberSchedule.visit_time_start}
+                  {chamberSchedule.visit_time_end ? ` – ${chamberSchedule.visit_time_end}` : ""}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Date & Time */}
         <div style={{ marginBottom: 16 }}>
@@ -706,8 +908,10 @@ function EditModal({
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function AppointmentsPage() {
+  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentListItem | null>(null);
+  const [startingAppt, setStartingAppt] = useState<AppointmentListItem | null>(null);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -770,6 +974,16 @@ export default function AppointmentsPage() {
           onBooked={() => {
             setShowModal(false);
             showToast("Appointment booked successfully", "success");
+          }}
+        />
+      )}
+      {startingAppt && (
+        <StartConsultationModal
+          appointment={startingAppt}
+          onClose={() => setStartingAppt(null)}
+          onStarted={(appointmentId) => {
+            setStartingAppt(null);
+            navigate(`/consultations/${appointmentId}`);
           }}
         />
       )}
@@ -1031,12 +1245,10 @@ export default function AppointmentsPage() {
                         </button>
                       )}
 
-                      {/* Start — confirmed / in_queue for clinical staff */}
+                      {/* Start — opens StartConsultationModal for clinical staff */}
                       {["confirmed", "in_queue"].includes(item.status) && isClinical && (
                         <button
-                          onClick={() =>
-                            statusMutation.mutate({ id: item.id, status: "in_progress" })
-                          }
+                          onClick={() => setStartingAppt(item)}
                           style={{
                             padding: "3px 10px",
                             background: "#fef3c7",
@@ -1049,6 +1261,25 @@ export default function AppointmentsPage() {
                           }}
                         >
                           Start
+                        </button>
+                      )}
+
+                      {/* Open — navigate to consultation page for in_progress items */}
+                      {item.status === "in_progress" && isClinical && (
+                        <button
+                          onClick={() => navigate(`/consultations/${item.id}`)}
+                          style={{
+                            padding: "3px 10px",
+                            background: "#eff6ff",
+                            color: colors.primary,
+                            border: `1px solid #bfdbfe`,
+                            borderRadius: radius.sm,
+                            cursor: "pointer",
+                            fontSize: font.sm,
+                            fontWeight: 500,
+                          }}
+                        >
+                          Open
                         </button>
                       )}
 

@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Dict, List
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -25,7 +25,7 @@ from interfaces.api.v1.prescriptions.serializers import (
     PrescriptionResponseSerializer,
     UpdatePrescriptionSerializer,
 )
-from interfaces.permissions import RolePermission
+from interfaces.permissions import ADMIN_ROLES, ModulePermission, RolePermission
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ class PrescriptionView(APIView):
     """
     POST /prescriptions/  — create a prescription for a completed consultation.
     """
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+    permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
 
     @extend_schema(
         summary="Create prescription",
@@ -114,9 +114,10 @@ class PrescriptionView(APIView):
 @extend_schema(tags=["prescriptions"])
 class PrescriptionDetailView(APIView):
     """
-    GET /prescriptions/<id>/  — retrieve a single prescription by its own ID.
+    GET   /prescriptions/<id>/  — retrieve a single prescription (clinical staff only).
+    PATCH /prescriptions/<id>/  — edit items on a draft prescription (doctors only).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
 
     @extend_schema(
         summary="Get prescription",
@@ -142,9 +143,8 @@ class PrescriptionDetailView(APIView):
         responses={200: PrescriptionResponseSerializer},
     )
     def patch(self, request: Request, prescription_id: uuid.UUID) -> Response:
-        # Only doctors (and admins via RolePermission logic) may edit
+        # Only doctors (and admins) may edit draft prescriptions
         role = getattr(request.user, "role", "")
-        ADMIN_ROLES = {"admin", "super_admin"}
         if role not in ({"doctor"} | ADMIN_ROLES):
             return Response(
                 {"error": "Only doctors can edit prescriptions"},
@@ -191,9 +191,9 @@ class PrescriptionDetailView(APIView):
 @extend_schema(tags=["prescriptions"])
 class PrescriptionByConsultationView(APIView):
     """
-    GET /prescriptions/consultation/<consultation_id>/  — fetch prescription for a consultation.
+    GET /prescriptions/consultation/<consultation_id>/  — fetch prescription for a consultation (clinical staff only).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
 
     @extend_schema(
         summary="Get prescription by consultation",
@@ -213,7 +213,13 @@ class PrescriptionByConsultationView(APIView):
 
 @extend_schema(tags=["prescriptions"])
 class ApprovePrescriptionView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
+    # POST /approve/ is semantically an update (draft → approved).
+    # RolePermission further restricts to doctor-only within prescriptions.update.
+    permission_classes = [
+        IsAuthenticated,
+        ModulePermission("prescriptions", action="update"),
+        RolePermission(["doctor"]),
+    ]
 
     @extend_schema(
         summary="Approve a draft prescription",
@@ -225,10 +231,28 @@ class ApprovePrescriptionView(APIView):
         responses={200: ApproveResponseSerializer},
     )
     def post(self, request: Request, prescription_id: uuid.UUID) -> Response:
+        from infrastructure.orm.models.prescription_model import PrescriptionModel
+
+        try:
+            pm = PrescriptionModel.objects.select_related("consultation", "prescribed_by").get(id=prescription_id)
+        except PrescriptionModel.DoesNotExist:
+            return Response({"error": "Prescription not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        role = getattr(request.user, "role", "")
+        if role == "doctor":
+            is_own_consultation = str(pm.consultation.doctor_id) == str(request.user.id)
+            is_supervised_assistant = (
+                pm.prescribed_by is not None and
+                str(getattr(pm.prescribed_by, "supervisor_id", None)) == str(request.user.id)
+            )
+            if not is_own_consultation and not is_supervised_assistant:
+                return Response(
+                    {"error": "You can only approve prescriptions from your own consultations or from your supervised assistant doctors"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         repo = DjangoPrescriptionRepository()
         prescription = repo.get_by_id(prescription_id)
-        if not prescription:
-            return Response({"error": "Prescription not found"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             prescription.approve(approver_id=request.user.id)
@@ -245,13 +269,13 @@ class ApprovePrescriptionView(APIView):
 
 @extend_schema(tags=["prescriptions"])
 class PendingPrescriptionsView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
+    permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
 
     @extend_schema(
         summary="List pending prescriptions",
         description=(
-            "List all **draft** prescriptions awaiting doctor approval, "
-            "ordered by creation time (oldest first). Accessible to doctors only."
+            "**Doctor:** returns all draft prescriptions awaiting approval. "
+            "**Assistant doctor:** returns only their own submitted drafts."
         ),
         responses={200: PendingPrescriptionSerializer(many=True)},
     )
@@ -260,7 +284,21 @@ class PendingPrescriptionsView(APIView):
             PrescriptionModel.objects
             .select_related("patient", "prescribed_by")
             .filter(status="draft")
-            .annotate(item_count=Count("items"))
+        )
+
+        role = getattr(request.user, "role", "")
+        if role == "assistant_doctor":
+            # assistant_doctor sees only their own submissions
+            qs = qs.filter(prescribed_by_id=request.user.id)
+        elif role == "doctor":
+            # doctor sees drafts from their own consultations OR submitted by their supervised assistants
+            qs = qs.filter(
+                Q(consultation__doctor_id=request.user.id) |
+                Q(prescribed_by__supervisor_id=request.user.id)
+            )
+
+        qs = (
+            qs.annotate(item_count=Count("items"))
             .order_by("created_at")[:50]
         )
         return Response([

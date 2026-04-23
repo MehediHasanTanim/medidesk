@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/features/auth/store/authStore";
 import apiClient from "@/shared/lib/apiClient";
+import queryClient from "@/shared/lib/queryClient";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 
 export default function LoginPage() {
@@ -24,6 +25,7 @@ export default function LoginPage() {
     try {
       const { data } = await apiClient.post("/auth/login/", { username, password });
       // Backend returns user info directly in the login response body
+      queryClient.clear();
       setAuth(data.user, data.access, data.refresh);
       navigate("/", { replace: true });
     } catch (err: unknown) {

@@ -8,6 +8,7 @@ export interface Patient {
   gender: "M" | "F" | "O";
   address: string;
   date_of_birth: string | null;
+  age_years: number | null;
   age: number | null;
   email: string | null;
   national_id: string | null;
@@ -29,6 +30,7 @@ export interface RegisterPatientPayload {
   gender: "M" | "F" | "O";
   address: string;
   date_of_birth?: string | null;
+  age_years?: number | null;
   email?: string | null;
   national_id?: string | null;
   allergies?: string[];
@@ -42,6 +44,7 @@ export interface UpdatePatientPayload {
   gender?: "M" | "F" | "O";
   address?: string;
   date_of_birth?: string | null;
+  age_years?: number | null;
   email?: string | null;
   national_id?: string | null;
   allergies?: string[];

@@ -8,6 +8,7 @@ export interface CreateUserPayload {
   role: string;
   password: string;
   chamber_ids?: string[];
+  supervisor_doctor_id?: string | null;
 }
 
 export interface UpdateUserPayload {
@@ -16,6 +17,7 @@ export interface UpdateUserPayload {
   role?: string;
   is_active?: boolean;
   chamber_ids?: string[];
+  supervisor_doctor_id?: string | null;
 }
 
 export interface DoctorOption {

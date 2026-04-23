@@ -2,6 +2,16 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
+# ── Chamber Schedule DTO ──────────────────────────────────────────────────────
+
+@dataclass
+class ChamberScheduleDTO:
+    chamber_id: str
+    visit_days: List[str] = field(default_factory=list)
+    visit_time_start: Optional[str] = None   # "HH:MM"
+    visit_time_end: Optional[str] = None     # "HH:MM"
+
+
 # ── Speciality DTOs ───────────────────────────────────────────────────────────
 
 @dataclass
@@ -54,11 +64,15 @@ class DoctorProfileDTO:
     visit_time_end: Optional[str]     # "HH:MM"
     # Assigned chambers
     chamber_ids: List[str] = field(default_factory=list)
+    supervisor_doctor_id: Optional[str] = None
+    profile_complete: bool = True
+    # Per-chamber visit schedules
+    chamber_schedules: List[ChamberScheduleDTO] = field(default_factory=list)
 
 
 @dataclass
 class CreateDoctorProfileDTO:
-    # User fields (new user will be created)
+    # User fields (new user will be created, unless existing_user_id is provided)
     username: str
     password: str
     full_name: str
@@ -67,6 +81,7 @@ class CreateDoctorProfileDTO:
     # Profile fields
     speciality_id: str
     qualifications: str
+    existing_user_id: Optional[str] = None   # set when adding a profile to an existing user
     bio: str = ""
     consultation_fee: Optional[float] = None
     experience_years: Optional[int] = None
@@ -75,6 +90,8 @@ class CreateDoctorProfileDTO:
     visit_time_start: Optional[str] = None
     visit_time_end: Optional[str] = None
     chamber_ids: List[str] = field(default_factory=list)
+    supervisor_doctor_id: Optional[str] = None
+    chamber_schedules: List[ChamberScheduleDTO] = field(default_factory=list)
 
 
 @dataclass
@@ -96,3 +113,5 @@ class UpdateDoctorProfileDTO:
     visit_time_start: Optional[str] = None
     visit_time_end: Optional[str] = None
     chamber_ids: Optional[List[str]] = None
+    supervisor_doctor_id: Optional[str] = None
+    chamber_schedules: Optional[List[ChamberScheduleDTO]] = None

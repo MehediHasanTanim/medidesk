@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict
 
+from django.db.models import Q
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -15,9 +16,7 @@ from interfaces.api.v1.test_orders.serializers import (
     TestOrderResponseSerializer,
     UpdateTestOrderSerializer,
 )
-from interfaces.permissions import RolePermission
-
-CLINICAL_ROLES = {"doctor", "assistant_doctor"}
+from interfaces.permissions import ConsultationOwnershipMixin, ModulePermission, RolePermission
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -44,7 +43,7 @@ def _order_to_dict(order) -> Dict[str, Any]:
 # ── Views ─────────────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["test-orders"])
-class ConsultationTestOrdersView(APIView):
+class ConsultationTestOrdersView(ConsultationOwnershipMixin, APIView):
     """
     GET  /consultations/<id>/test-orders/  — list test orders for a consultation
     POST /consultations/<id>/test-orders/  — add one or more test orders
@@ -52,7 +51,7 @@ class ConsultationTestOrdersView(APIView):
     Doctor orders are auto-approved.
     Assistant-doctor orders start as "pending" and require doctor approval.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("test_orders")]
 
     @extend_schema(
         summary="List test orders for a consultation",
@@ -89,11 +88,6 @@ class ConsultationTestOrdersView(APIView):
         from infrastructure.orm.models.consultation_model import ConsultationModel
 
         role = getattr(request.user, "role", "")
-        if role not in CLINICAL_ROLES:
-            return Response(
-                {"error": "Only clinical staff can order lab tests"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         try:
             consultation = ConsultationModel.objects.get(id=consultation_id)
@@ -101,8 +95,9 @@ class ConsultationTestOrdersView(APIView):
             return Response({"error": "Consultation not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Assistant doctor may only add tests to consultations they started
-        if role == "assistant_doctor" and str(consultation.doctor_id) != str(request.user.id):
-            return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+        scope_err = self.check_consultation_scope(request, consultation.doctor_id)
+        if scope_err:
+            return scope_err
 
         serializer = BulkCreateTestOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -134,7 +129,7 @@ class ConsultationTestOrdersView(APIView):
 
 
 @extend_schema(tags=["test-orders"])
-class TestOrderDetailView(APIView):
+class TestOrderDetailView(ConsultationOwnershipMixin, APIView):
     """
     PATCH  /test-orders/<id>/  — update lab_name, notes, completion status, or approval_status
     DELETE /test-orders/<id>/  — cancel / remove a test order
@@ -144,7 +139,7 @@ class TestOrderDetailView(APIView):
     - Assistant doctor: can only edit/delete orders that are still "pending" in consultations
       they started. Cannot change approval_status.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("test_orders")]
 
     @extend_schema(
         summary="Update a test order",
@@ -161,11 +156,6 @@ class TestOrderDetailView(APIView):
         from infrastructure.orm.models.test_order_model import TestOrderModel
 
         role = getattr(request.user, "role", "")
-        if role not in CLINICAL_ROLES:
-            return Response(
-                {"error": "Only clinical staff can update test orders"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         try:
             order = TestOrderModel.objects.select_related("ordered_by", "consultation").get(id=order_id)
@@ -176,10 +166,12 @@ class TestOrderDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # Scope: assistant_doctor may only edit orders in consultations they started
+        scope_err = self.check_consultation_scope(request, order.consultation.doctor_id)
+        if scope_err:
+            return scope_err
+
         if role == "assistant_doctor":
-            # Scope: only consultations this assistant_doctor started
-            if str(order.consultation.doctor_id) != str(request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
             # Cannot touch already-reviewed orders
             if order.approval_status != "pending":
                 return Response(
@@ -226,20 +218,18 @@ class TestOrderDetailView(APIView):
         from infrastructure.orm.models.test_order_model import TestOrderModel
 
         role = getattr(request.user, "role", "")
-        if role not in CLINICAL_ROLES:
-            return Response(
-                {"error": "Only clinical staff can delete test orders"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
 
         try:
             order = TestOrderModel.objects.select_related("consultation").get(id=order_id)
         except TestOrderModel.DoesNotExist:
             return Response({"error": "Test order not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Scope: assistant_doctor may only delete orders in consultations they started
+        scope_err = self.check_consultation_scope(request, order.consultation.doctor_id)
+        if scope_err:
+            return scope_err
+
         if role == "assistant_doctor":
-            if str(order.consultation.doctor_id) != str(request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
             if order.approval_status != "pending":
                 return Response(
                     {"error": "Cannot delete an order that has already been approved or rejected"},
@@ -255,7 +245,7 @@ class PatientTestOrdersView(APIView):
     """
     GET /test-orders/?patient_id=<uuid>[&consultation_id=<uuid>][&pending_only=true][&approval_status=<value>]
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("test_orders")]
 
     @extend_schema(
         summary="List test orders for a patient",
@@ -304,11 +294,37 @@ class PatientTestOrdersView(APIView):
 
 
 @extend_schema(tags=["test-orders"])
+class MyTestOrdersView(APIView):
+    """
+    GET /test-orders/mine/  — test orders placed by the calling user (assistant_doctor only)
+    """
+    permission_classes = [IsAuthenticated, ModulePermission("test_orders"), RolePermission(["assistant_doctor"])]
+
+    @extend_schema(
+        summary="List my own test orders",
+        description="Returns all test orders placed by the calling assistant doctor, newest first.",
+        responses={200: TestOrderResponseSerializer(many=True)},
+    )
+    def get(self, request: Request) -> Response:
+        from infrastructure.orm.models.test_order_model import TestOrderModel
+
+        qs = (
+            TestOrderModel.objects
+            .filter(ordered_by=request.user)
+            .select_related("ordered_by", "patient")
+            .order_by("-ordered_at")
+        )
+        return Response([_order_to_dict(o) for o in qs])
+
+
+@extend_schema(tags=["test-orders"])
 class PendingTestOrdersView(APIView):
     """
     GET /test-orders/pending/  — all test orders awaiting doctor approval (doctor only)
     """
-    permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
+    # test_orders.view is allowed for both doctor and assistant_doctor,
+    # but this endpoint is doctor-only (approval queue); RolePermission narrows it.
+    permission_classes = [IsAuthenticated, ModulePermission("test_orders"), RolePermission(["doctor"])]
 
     @extend_schema(
         summary="List all pending test orders",
@@ -320,7 +336,11 @@ class PendingTestOrdersView(APIView):
 
         qs = (
             TestOrderModel.objects
-            .filter(approval_status="pending")
+            .filter(
+                Q(approval_status="pending"),
+                Q(consultation__doctor_id=request.user.id) |
+                Q(ordered_by__supervisor_id=request.user.id),
+            )
             .select_related("ordered_by", "patient")
             .order_by("-ordered_at")
         )

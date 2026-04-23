@@ -11,6 +11,7 @@ class UserRole(str, Enum):
     ASSISTANT_DOCTOR = "assistant_doctor"
     RECEPTIONIST = "receptionist"
     ASSISTANT = "assistant"
+    TRAINEE = "trainee"
 
 
 @dataclass
@@ -22,6 +23,7 @@ class User:
     role: UserRole
     chamber_ids: List[UUID] = field(default_factory=list)
     is_active: bool = True
+    supervisor_id: Optional[UUID] = None
 
     @property
     def is_admin(self) -> bool:

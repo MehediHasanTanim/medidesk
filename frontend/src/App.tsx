@@ -16,6 +16,7 @@ import PrescriptionsPage from "@/features/prescriptions/pages/PrescriptionsPage"
 import DoctorsPage from "@/features/doctors/pages/DoctorsPage";
 import ConsultationPage from "@/features/consultations/pages/ConsultationPage";
 import MedicinesPage from "@/features/medicines/pages/MedicinesPage";
+import TestOrdersPage from "@/features/testOrders/pages/TestOrdersPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -32,12 +33,12 @@ export default function App() {
         {/* Private — all authenticated users */}
         <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-        {/* Clinical & front-desk — doctors, assistant doctors, receptionists, assistants (clerical) */}
+        {/* Clinical & front-desk — doctors, assistant doctors, receptionists, assistants (clerical), trainees (read-only) */}
         <Route
           path="/patients"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"]}>
                 <PatientsPage />
               </RoleGuard>
             </PrivateRoute>
@@ -47,7 +48,7 @@ export default function App() {
           path="/patients/:patientId/history"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "trainee"]}>
                 <PatientHistoryPage />
               </RoleGuard>
             </PrivateRoute>
@@ -57,7 +58,7 @@ export default function App() {
           path="/appointments"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"]}>
                 <AppointmentsPage />
               </RoleGuard>
             </PrivateRoute>
@@ -67,7 +68,7 @@ export default function App() {
           path="/queue"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"]}>
                 <QueuePage />
               </RoleGuard>
             </PrivateRoute>
@@ -77,7 +78,7 @@ export default function App() {
           path="/consultations/:appointmentId"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant", "admin", "super_admin"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "receptionist", "assistant", "trainee", "admin", "super_admin"]}>
                 <ConsultationPage />
               </RoleGuard>
             </PrivateRoute>
@@ -95,24 +96,36 @@ export default function App() {
           }
         />
 
-        {/* Doctor-only */}
+        {/* Clinical — doctors see approval queue; assistant doctors see their own submissions */}
         <Route
           path="/prescriptions"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor"]}>
                 <PrescriptionsPage />
               </RoleGuard>
             </PrivateRoute>
           }
         />
 
-        {/* Medicines — doctors + admins */}
+        {/* Test-order approvals — doctors only */}
+        <Route
+          path="/test-orders"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["doctor"]}>
+                <TestOrdersPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+
+        {/* Medicines — doctors + trainees (read-only) + admins */}
         <Route
           path="/medicines"
           element={
             <PrivateRoute>
-              <RoleGuard roles={["doctor", "assistant_doctor", "super_admin", "admin"]}>
+              <RoleGuard roles={["doctor", "assistant_doctor", "trainee", "super_admin", "admin"]}>
                 <MedicinesPage />
               </RoleGuard>
             </PrivateRoute>

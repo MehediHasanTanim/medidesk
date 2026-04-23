@@ -20,7 +20,10 @@ from interfaces.api.v1.consultations.serializers import (
     VitalsResponseSerializer,
     VitalsSerializer,
 )
-from interfaces.permissions import RolePermission
+from interfaces.permissions import ADMIN_ROLES, ConsultationOwnershipMixin, ModulePermission, RolePermission
+
+# Roles allowed to create/modify consultation records (write access)
+_CLINICAL_WRITE_ROLES = frozenset({"doctor", "assistant_doctor"})
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -56,16 +59,16 @@ def _consultation_to_dict(c: Consultation) -> Dict[str, Any]:
 
 # ── Views ─────────────────────────────────────────────────────────────────────
 
-CLINICAL_ROLES = {"doctor", "assistant_doctor"}
-
-
 @extend_schema(tags=["consultations"])
 class ConsultationListView(APIView):
     """
     GET  /consultations/  — list/fetch consultations (filter by appointment_id or patient_id)
     POST /consultations/  — start a new consultation (clinical staff only)
+
+    GET is available to reception staff (read-only audit/billing context).
+    POST is restricted to clinical staff (doctor, assistant_doctor).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("consultations")]
 
     @extend_schema(
         summary="List consultations",
@@ -115,11 +118,13 @@ class ConsultationListView(APIView):
         responses={201: StartConsultationResponseSerializer},
     )
     def post(self, request: Request) -> Response:
-        if getattr(request.user, "role", "") not in CLINICAL_ROLES:
+        role = getattr(request.user, "role", "")
+        if role not in _CLINICAL_WRITE_ROLES and role not in ADMIN_ROLES:
             return Response(
                 {"error": "Only clinical staff can start consultations"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
         serializer = StartConsultationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
@@ -139,12 +144,16 @@ class ConsultationListView(APIView):
 
 
 @extend_schema(tags=["consultations"])
-class ConsultationDetailView(APIView):
+class ConsultationDetailView(ConsultationOwnershipMixin, APIView):
     """
-    GET   /consultations/<id>/  — retrieve a single consultation (any authenticated user)
+    GET   /consultations/<id>/  — retrieve a single consultation
     PATCH /consultations/<id>/  — update text fields while still a draft (clinical staff only)
+
+    GET is available to reception staff (read-only access).
+    PATCH is restricted to clinical staff (doctor, assistant_doctor) who started
+    the consultation.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("consultations")]
 
     @extend_schema(
         summary="Get consultation",
@@ -168,11 +177,22 @@ class ConsultationDetailView(APIView):
         responses={200: ConsultationResponseSerializer},
     )
     def patch(self, request: Request, consultation_id: uuid.UUID) -> Response:
-        if getattr(request.user, "role", "") not in CLINICAL_ROLES:
+        role = getattr(request.user, "role", "")
+        if role not in _CLINICAL_WRITE_ROLES and role not in ADMIN_ROLES:
             return Response(
                 {"error": "Only clinical staff can update consultations"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        # Verify the caller owns this consultation before applying changes
+        from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
+        consultation = DjangoConsultationRepository().get_by_id(consultation_id)
+        if not consultation:
+            return Response({"error": "Consultation not found"}, status=status.HTTP_404_NOT_FOUND)
+        scope_err = self.check_consultation_scope(request, consultation.doctor_id)
+        if scope_err:
+            return scope_err
+
         serializer = UpdateConsultationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
@@ -193,8 +213,9 @@ class ConsultationDetailView(APIView):
 
 
 @extend_schema(tags=["consultations"])
-class CompleteConsultationView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+class CompleteConsultationView(ConsultationOwnershipMixin, APIView):
+    # POST to /complete/ is semantically an update (finalising the consultation).
+    permission_classes = [IsAuthenticated, ModulePermission("consultations", action="update")]
 
     @extend_schema(
         summary="Complete consultation",
@@ -208,14 +229,14 @@ class CompleteConsultationView(APIView):
         responses={200: StartConsultationResponseSerializer},
     )
     def post(self, request: Request, consultation_id: uuid.UUID) -> Response:
-        # assistant_doctors may only complete consultations they started
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
-            consultation = DjangoConsultationRepository().get_by_id(consultation_id)
-            if not consultation:
-                return Response({"error": "Consultation not found"}, status=status.HTTP_404_NOT_FOUND)
-            if str(consultation.doctor_id) != str(request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+        # Clinical staff may only complete consultations they personally started
+        from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
+        consultation = DjangoConsultationRepository().get_by_id(consultation_id)
+        if not consultation:
+            return Response({"error": "Consultation not found"}, status=status.HTTP_404_NOT_FOUND)
+        scope_err = self.check_consultation_scope(request, consultation.doctor_id)
+        if scope_err:
+            return scope_err
 
         serializer = CompleteConsultationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -254,8 +275,8 @@ class CompleteConsultationView(APIView):
     request=VitalsSerializer,
     responses={200: VitalsResponseSerializer},
 )
-class UpdateVitalsView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+class UpdateVitalsView(ConsultationOwnershipMixin, APIView):
+    permission_classes = [IsAuthenticated, ModulePermission("consultations", action="update")]
 
     def patch(self, request: Request, consultation_id: uuid.UUID) -> Response:
         from infrastructure.repositories.django_consultation_repository import DjangoConsultationRepository
@@ -270,9 +291,9 @@ class UpdateVitalsView(APIView):
         if not consultation:
             return Response({"error": "Consultation not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            if str(consultation.doctor_id) != str(request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+        scope_err = self.check_consultation_scope(request, consultation.doctor_id)
+        if scope_err:
+            return scope_err
 
         # Merge incoming fields onto existing vitals (keep existing values if not provided)
         existing = consultation.vitals

@@ -19,11 +19,40 @@ from interfaces.api.v1.appointments.serializers import (
     StatusUpdateSerializer,
     UpdateAppointmentSerializer,
 )
-from interfaces.permissions import RolePermission
+from interfaces.permissions import ModulePermission, ReceptionistChamberScopeMixin, RolePermission
 
 
-class BookAppointmentView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist", "assistant"])]
+def _apply_clinical_scope(request, qs):
+    """
+    For doctor/assistant_doctor roles, restrict the queryset to only appointments
+    they are allowed to see:
+      - doctor      → their own appointments, scoped to their assigned chambers
+      - asst_doctor → their supervisor's appointments, scoped to their assigned chambers
+    Returns (scoped_qs, error_response_or_None).
+    """
+    role = getattr(request.user, "role", None)
+    if role not in ("doctor", "assistant_doctor"):
+        return qs, None
+
+    if role == "doctor":
+        doctor_id = request.user.id
+    else:
+        doctor_id = getattr(request.user, "supervisor_id", None)
+        if not doctor_id:
+            # No supervisor assigned — show nothing
+            return qs.none(), None
+
+    qs = qs.filter(doctor_id=doctor_id)
+
+    chamber_ids = list(request.user.chambers.values_list("id", flat=True))
+    if chamber_ids:
+        qs = qs.filter(chamber_id__in=chamber_ids)
+
+    return qs, None
+
+
+class BookAppointmentView(ReceptionistChamberScopeMixin, APIView):
+    permission_classes = [IsAuthenticated, ModulePermission("appointments")]
 
     @extend_schema(
         tags=["appointments"],
@@ -58,17 +87,24 @@ class BookAppointmentView(APIView):
             scheduled_at__date=target_date
         ).select_related("patient", "doctor").order_by("scheduled_at")
 
+        qs, scope_err = _apply_clinical_scope(request, qs)
+        if scope_err:
+            return scope_err
+
         if pid := request.query_params.get("patient_id"):
             try:
                 qs = qs.filter(patient_id=uuid.UUID(pid))
             except ValueError:
                 return Response({"error": "Invalid patient_id."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if did := request.query_params.get("doctor_id"):
-            try:
-                qs = qs.filter(doctor_id=uuid.UUID(did))
-            except ValueError:
-                return Response({"error": "Invalid doctor_id."}, status=status.HTTP_400_BAD_REQUEST)
+        # Only allow doctor_id filter for non-clinical roles; clinical roles are already scoped
+        role = getattr(request.user, "role", None)
+        if role not in ("doctor", "assistant_doctor"):
+            if did := request.query_params.get("doctor_id"):
+                try:
+                    qs = qs.filter(doctor_id=uuid.UUID(did))
+                except ValueError:
+                    return Response({"error": "Invalid doctor_id."}, status=status.HTTP_400_BAD_REQUEST)
 
         if st := request.query_params.get("status"):
             qs = qs.filter(status=st)
@@ -115,13 +151,26 @@ class BookAppointmentView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # Doctors/assistant_doctors default to themselves; non-clinical roles must supply doctor_id
+        # Doctors/assistant_doctors default to their own (or supervisor's) ID;
+        # non-clinical roles must supply doctor_id explicitly.
         user_role = getattr(request.user, "role", None)
         is_clinical = user_role in ("doctor", "assistant_doctor")
         provided_doctor_id = data.get("doctor_id")
 
         if is_clinical:
-            doctor_id = str(provided_doctor_id) if provided_doctor_id else str(request.user.id)
+            if provided_doctor_id:
+                doctor_id = str(provided_doctor_id)
+            elif user_role == "assistant_doctor":
+                # Assistant doctors book under their supervisor, not themselves
+                supervisor_id = getattr(request.user, "supervisor_id", None)
+                if not supervisor_id:
+                    return Response(
+                        {"error": "No supervisor doctor assigned to your account. Please contact an admin."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                doctor_id = str(supervisor_id)
+            else:
+                doctor_id = str(request.user.id)
         else:
             if not provided_doctor_id:
                 return Response(
@@ -130,12 +179,17 @@ class BookAppointmentView(APIView):
                 )
             doctor_id = str(provided_doctor_id)
 
+        chamber_id = str(data["chamber_id"]) if data.get("chamber_id") else None
+        scope_err = self.check_chamber_scope(request, chamber_id)
+        if scope_err:
+            return scope_err
+
         dto = BookAppointmentDTO(
             patient_id=str(data["patient_id"]),
             doctor_id=doctor_id,
             scheduled_at=data["scheduled_at"].isoformat(),
             appointment_type=data["appointment_type"],
-            chamber_id=str(data["chamber_id"]) if data.get("chamber_id") else None,
+            chamber_id=chamber_id,
             notes=data.get("notes", ""),
             created_by_id=str(request.user.id),
         )
@@ -147,7 +201,7 @@ class BookAppointmentView(APIView):
 
 
 class QueueView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("appointments")]
 
     @extend_schema(
         tags=["appointments"],
@@ -184,11 +238,19 @@ class QueueView(APIView):
             status__in=["confirmed", "in_queue", "in_progress"],
         ).select_related("patient").order_by("token_number")
 
-        if chamber_id_str:
-            try:
-                qs = qs.filter(chamber_id=uuid.UUID(chamber_id_str))
-            except ValueError:
-                return Response({"error": "Invalid chamber_id."}, status=status.HTTP_400_BAD_REQUEST)
+        qs, scope_err = _apply_clinical_scope(request, qs)
+        if scope_err:
+            return scope_err
+
+        # For non-clinical roles, allow optional chamber_id filter from query param.
+        # For clinical roles, chamber scope is already applied by _apply_clinical_scope.
+        role = getattr(request.user, "role", None)
+        if role not in ("doctor", "assistant_doctor"):
+            if chamber_id_str:
+                try:
+                    qs = qs.filter(chamber_id=uuid.UUID(chamber_id_str))
+                except ValueError:
+                    return Response({"error": "Invalid chamber_id."}, status=status.HTTP_400_BAD_REQUEST)
 
         items = []
         for m in qs:
@@ -211,9 +273,16 @@ class QueueView(APIView):
         })
 
 
-class AppointmentStatusView(APIView):
+class AppointmentStatusView(ReceptionistChamberScopeMixin, APIView):
     """Generic status transitions (confirm, cancel, no_show, in_progress, completed)."""
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor", "receptionist"])]
+    # ModulePermission enforces appointments.update from the matrix;
+    # RolePermission further restricts status transitions to clinical+reception
+    # staff only (assistant role may update appointment fields but not lifecycle status).
+    permission_classes = [
+        IsAuthenticated,
+        ModulePermission("appointments"),
+        RolePermission(["doctor", "assistant_doctor", "receptionist"]),
+    ]
 
     @extend_schema(
         tags=["appointments"],
@@ -243,6 +312,10 @@ class AppointmentStatusView(APIView):
         if not appt:
             return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        scope_err = self.check_chamber_scope(request, appt.chamber_id)
+        if scope_err:
+            return scope_err
+
         try:
             if new_status == AppointmentStatus.CONFIRMED.value:
                 appt.confirm()
@@ -266,9 +339,9 @@ class AppointmentStatusView(APIView):
         return Response({"id": str(appt.id), "status": appt.status.value})
 
 
-class AppointmentDetailView(APIView):
+class AppointmentDetailView(ReceptionistChamberScopeMixin, APIView):
     """Retrieve or edit a single appointment's fields (not status)."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("appointments")]
 
     @extend_schema(
         tags=["appointments"],
@@ -318,6 +391,13 @@ class AppointmentDetailView(APIView):
         from domain.entities.appointment import AppointmentStatus, AppointmentType
         from infrastructure.orm.models.user_model import UserModel
 
+        EDIT_ROLES = {"doctor", "assistant_doctor", "receptionist", "assistant"}
+        if getattr(request.user, "role", "") not in EDIT_ROLES:
+            return Response(
+                {"error": "Only clinical and reception staff can edit appointments"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         ser = UpdateAppointmentSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
@@ -328,6 +408,10 @@ class AppointmentDetailView(APIView):
             )
         except AppointmentModel.DoesNotExist:
             return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        scope_err = self.check_chamber_scope(request, m.chamber_id)
+        if scope_err:
+            return scope_err
 
         # Only allow editing pre-arrival appointments
         if m.status not in (
@@ -397,8 +481,10 @@ class AppointmentDetailView(APIView):
     request=None,
     responses={200: CheckInResponseSerializer},
 )
-class CheckInView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["receptionist", "assistant", "doctor"])]
+class CheckInView(ReceptionistChamberScopeMixin, APIView):
+    # Check-in is a POST but semantically updates an appointment's status;
+    # action="update" maps this to the appointments.update matrix entry.
+    permission_classes = [IsAuthenticated, ModulePermission("appointments", action="update")]
 
     def post(self, request: Request, appointment_id: uuid.UUID) -> Response:
         from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
@@ -407,6 +493,10 @@ class CheckInView(APIView):
         appt = repo.get_by_id(appointment_id)
         if not appt:
             return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        scope_err = self.check_chamber_scope(request, appt.chamber_id)
+        if scope_err:
+            return scope_err
 
         target_date = appt.scheduled_at.date()
         next_token = repo.get_next_token(target_date, appt.chamber_id)

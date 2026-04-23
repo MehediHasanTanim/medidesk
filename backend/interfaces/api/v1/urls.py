@@ -26,7 +26,7 @@ TokenBlacklistView = extend_schema(
     request=TokenBlacklistRequestSerializer,
     responses={200: MessageSerializer},
 )(TokenBlacklistView)
-from interfaces.api.v1.patients.views import PatientRegistrationView, PatientDetailView, PatientSearchView, PatientHistoryView
+from interfaces.api.v1.patients.views import PatientRegistrationView, PatientDetailView, PatientSearchView, PatientHistoryView, PatientNoteCreateView
 from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, AppointmentDetailView, AppointmentStatusView, CheckInView
 from interfaces.api.v1.doctors.views import (
     SpecialityListView,
@@ -63,11 +63,16 @@ from interfaces.api.v1.test_orders.views import (
     TestOrderDetailView,
     PatientTestOrdersView,
     PendingTestOrdersView,
+    MyTestOrdersView,
 )
 from interfaces.api.v1.users.views import UserListView, UserDetailView, DoctorsListView
 from interfaces.api.v1.chambers.views import ChamberListView, ChamberDetailView
+from interfaces.api.v1.dashboard.views import DashboardView
 
 urlpatterns = [
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    path("dashboard/", DashboardView.as_view(), name="dashboard"),
+
     # ── Auth ──────────────────────────────────────────────────────────────────
     path("auth/login/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
@@ -89,6 +94,7 @@ urlpatterns = [
     path("patients/search/", PatientSearchView.as_view(), name="patient_search"),
     path("patients/<uuid:patient_id>/", PatientDetailView.as_view(), name="patient_detail"),
     path("patients/<uuid:patient_id>/history/", PatientHistoryView.as_view(), name="patient_history"),
+    path("patients/<uuid:patient_id>/notes/", PatientNoteCreateView.as_view(), name="patient_notes"),
 
     # ── Appointments ──────────────────────────────────────────────────────────
     path("appointments/", BookAppointmentView.as_view(), name="book_appointment"),
@@ -117,6 +123,7 @@ urlpatterns = [
 
     # ── Lab test orders ───────────────────────────────────────────────────────
     path("consultations/<uuid:consultation_id>/test-orders/", ConsultationTestOrdersView.as_view(), name="consultation_test_orders"),
+    path("test-orders/mine/", MyTestOrdersView.as_view(), name="my_test_orders"),
     path("test-orders/pending/", PendingTestOrdersView.as_view(), name="pending_test_orders"),
     path("test-orders/", PatientTestOrdersView.as_view(), name="patient_test_orders"),
     path("test-orders/<uuid:order_id>/", TestOrderDetailView.as_view(), name="test_order_detail"),

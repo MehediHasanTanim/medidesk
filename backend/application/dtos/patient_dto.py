@@ -9,6 +9,7 @@ class RegisterPatientDTO:
     gender: str
     address: str
     date_of_birth: Optional[str] = None
+    age_years: Optional[int] = None
     email: Optional[str] = None
     national_id: Optional[str] = None
     allergies: List[str] = field(default_factory=list)
@@ -24,6 +25,7 @@ class UpdatePatientDTO:
     gender: Optional[str] = None
     address: Optional[str] = None
     date_of_birth: Optional[str] = None
+    age_years: Optional[int] = None
     email: Optional[str] = None
     national_id: Optional[str] = None
     allergies: Optional[List[str]] = None

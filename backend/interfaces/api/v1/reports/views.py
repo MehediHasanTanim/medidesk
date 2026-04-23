@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from interfaces.api.v1.reports.serializers import UploadReportSerializer, ReportResponseSerializer
-from interfaces.permissions import RolePermission
+from interfaces.permissions import ModulePermission
 
 
 def _report_to_dict(report, request) -> dict:
@@ -35,7 +35,7 @@ class ReportUploadView(APIView):
     POST /reports/  — upload a patient report document (multipart/form-data)
     GET  /reports/?patient_id=<uuid>[&consultation_id=<uuid>]  — list reports
     """
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+    permission_classes = [IsAuthenticated, ModulePermission("reports")]
     parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(
@@ -57,12 +57,6 @@ class ReportUploadView(APIView):
         data = serializer.validated_data
 
         patient_id = data["patient_id"]
-
-        # assistant_doctor: only patients they have appointments with
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
-            if not DjangoPatientRepository().has_appointment_with_doctor(patient_id, request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             patient = PatientModel.objects.get(id=patient_id)
@@ -99,12 +93,6 @@ class ReportUploadView(APIView):
         except ValueError:
             return Response({"error": "Invalid patient_id"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # assistant_doctor: only their patients
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
-            if not DjangoPatientRepository().has_appointment_with_doctor(patient_id, request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
-
         qs = ReportDocumentModel.objects.filter(patient_id=patient_id).select_related("uploaded_by").order_by("-uploaded_at")
 
         consultation_id_str = request.query_params.get("consultation_id")
@@ -122,8 +110,9 @@ class ReportFileView(APIView):
     """
     GET /reports/<report_id>/file/              — stream file inline (for viewing)
     GET /reports/<report_id>/file/?download=1   — stream with attachment header (for download)
+    Clinical staff only (doctor, assistant_doctor). assistant_doctor is further scoped to their own patients.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("reports")]
 
     @extend_schema(
         summary="Stream a report file",
@@ -141,12 +130,6 @@ class ReportFileView(APIView):
             report = ReportDocumentModel.objects.get(id=report_id)
         except ReportDocumentModel.DoesNotExist:
             return Response({"error": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        # assistant_doctor: scope to their own patients
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
-            if not DjangoPatientRepository().has_appointment_with_doctor(report.patient_id, request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             file_path = report.file.path

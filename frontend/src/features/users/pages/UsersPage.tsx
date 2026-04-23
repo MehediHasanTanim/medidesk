@@ -37,12 +37,18 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   const [form, setForm] = useState<CreateUserPayload>({
     username: "", full_name: "", email: "", role: "receptionist", password: "", chamber_ids: [],
+    supervisor_doctor_id: null,
   });
   const [error, setError] = useState("");
 
   const { data: chambers = [] } = useQuery({
     queryKey: ["chambers"],
     queryFn: () => chambersApi.list(),
+  });
+
+  const { data: doctors = [] } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: () => usersApi.doctors(),
   });
 
   const create = useMutation({
@@ -75,10 +81,35 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Role</label>
-          <select value={form.role} onChange={(e) => set("role", e.target.value)} style={inputStyle}>
+          <select
+            value={form.role}
+            onChange={(e) => {
+              const newRole = e.target.value;
+              setForm((f) => ({ ...f, role: newRole, supervisor_doctor_id: newRole === "assistant_doctor" ? f.supervisor_doctor_id : null }));
+            }}
+            style={inputStyle}
+          >
             {availableRoles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
         </div>
+
+        {form.role === "assistant_doctor" && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>
+              Supervisor Doctor <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <select
+              value={form.supervisor_doctor_id ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, supervisor_doctor_id: e.target.value || null }))}
+              style={inputStyle}
+            >
+              <option value="">— Select a doctor —</option>
+              {doctors.filter((d) => d.role === "doctor").map((d) => (
+                <option key={d.id} value={d.id}>{d.full_name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Password</label>
@@ -108,7 +139,17 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "8px 18px", background: colors.borderLight, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}>Cancel</button>
-          <button onClick={() => create.mutate(form)} disabled={create.isPending} style={{ padding: "8px 18px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}>
+          <button
+            onClick={() => {
+              if (!form.chamber_ids || form.chamber_ids.length === 0) {
+                setError("Please select at least one chamber.");
+                return;
+              }
+              create.mutate(form);
+            }}
+            disabled={create.isPending}
+            style={{ padding: "8px 18px", background: colors.primary, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}
+          >
             {create.isPending ? "Creating…" : "Create User"}
           </button>
         </div>
@@ -128,12 +169,18 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRecord; onClose: 
     email: user.email,
     role: user.role,
     chamber_ids: user.chamber_ids,
+    supervisor_doctor_id: user.supervisor_doctor_id ?? null,
   });
   const [error, setError] = useState("");
 
   const { data: chambers = [] } = useQuery({
     queryKey: ["chambers"],
     queryFn: () => chambersApi.list(),
+  });
+
+  const { data: doctors = [] } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: () => usersApi.doctors(),
   });
 
   const update = useMutation({
@@ -168,10 +215,35 @@ function EditUserModal({ user, onClose, onSaved }: { user: UserRecord; onClose: 
 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Role</label>
-          <select value={form.role ?? ""} onChange={(e) => set("role", e.target.value)} style={inputStyle}>
+          <select
+            value={form.role ?? ""}
+            onChange={(e) => {
+              const newRole = e.target.value;
+              setForm((f) => ({ ...f, role: newRole, supervisor_doctor_id: newRole === "assistant_doctor" ? f.supervisor_doctor_id : null }));
+            }}
+            style={inputStyle}
+          >
             {availableRoles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
         </div>
+
+        {form.role === "assistant_doctor" && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>
+              Supervisor Doctor <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <select
+              value={form.supervisor_doctor_id ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, supervisor_doctor_id: e.target.value || null }))}
+              style={inputStyle}
+            >
+              <option value="">— Select a doctor —</option>
+              {doctors.filter((d) => d.role === "doctor").map((d) => (
+                <option key={d.id} value={d.id}>{d.full_name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {chambers.length > 0 && (
           <div style={{ marginBottom: 20 }}>

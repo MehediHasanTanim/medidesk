@@ -72,7 +72,8 @@ class DjangoUserRepository(IUserRepository):
             model.email = user.email
             model.role = user.role.value
             model.is_active = user.is_active
-            model.save(update_fields=["full_name", "email", "role", "is_active"])
+            model.supervisor_id = user.supervisor_id
+            model.save(update_fields=["full_name", "email", "role", "is_active", "supervisor_id"])
         except UserModel.DoesNotExist:
             model = UserModel.objects.create_user(
                 id=user.id,
@@ -82,6 +83,7 @@ class DjangoUserRepository(IUserRepository):
                 full_name=user.full_name,
                 role=user.role.value,
                 is_active=user.is_active,
+                supervisor_id=user.supervisor_id,
             )
         return self._to_domain(model)
 
@@ -104,4 +106,5 @@ class DjangoUserRepository(IUserRepository):
             role=UserRole(model.role),
             chamber_ids=[c.id for c in model.chambers.all()],
             is_active=model.is_active,
+            supervisor_id=model.supervisor_id,
         )

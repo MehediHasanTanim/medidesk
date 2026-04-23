@@ -4,6 +4,7 @@ import AppShell from "@/shared/components/AppShell";
 import Toast, { useToast } from "@/shared/components/Toast";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import { chambersApi } from "@/features/chambers/api/chambersApi";
+import { usersApi } from "@/features/users/api/usersApi";
 import {
   doctorProfilesApi,
   specialitiesApi,
@@ -59,7 +60,7 @@ function FieldRow({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <label style={labelStyle}>{label}</label>
@@ -164,6 +165,13 @@ function ChamberCheckList({
 
 // ── DoctorForm (shared between create and edit) ────────────────────────────
 
+interface ChamberScheduleFormItem {
+  chamber_id: string;
+  visit_days: string[];
+  visit_time_start: string;
+  visit_time_end: string;
+}
+
 interface DoctorFormState {
   full_name: string;
   username: string;
@@ -177,10 +185,10 @@ interface DoctorFormState {
   experience_years: string;
   is_available: boolean;
   is_active: boolean;
-  visit_days: string[];
-  visit_time_start: string;
-  visit_time_end: string;
   chamber_ids: string[];
+  chamber_schedules: ChamberScheduleFormItem[];
+  supervisor_doctor_id: string;
+  existing_user_id: string;
 }
 
 function emptyForm(): DoctorFormState {
@@ -197,10 +205,10 @@ function emptyForm(): DoctorFormState {
     experience_years: "",
     is_available: true,
     is_active: true,
-    visit_days: [],
-    visit_time_start: "",
-    visit_time_end: "",
     chamber_ids: [],
+    chamber_schedules: [],
+    supervisor_doctor_id: "",
+    existing_user_id: "",
   };
 }
 
@@ -218,10 +226,15 @@ function fromProfile(p: DoctorProfile): DoctorFormState {
     experience_years: p.experience_years != null ? String(p.experience_years) : "",
     is_available: p.is_available,
     is_active: p.is_active,
-    visit_days: p.visit_days,
-    visit_time_start: p.visit_time_start ?? "",
-    visit_time_end: p.visit_time_end ?? "",
     chamber_ids: p.chamber_ids,
+    chamber_schedules: (p.chamber_schedules ?? []).map((cs) => ({
+      chamber_id: cs.chamber_id,
+      visit_days: cs.visit_days,
+      visit_time_start: cs.visit_time_start ?? "",
+      visit_time_end: cs.visit_time_end ?? "",
+    })),
+    supervisor_doctor_id: p.supervisor_doctor_id ?? "",
+    existing_user_id: "",
   };
 }
 
@@ -236,6 +249,47 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
   const set = (field: keyof DoctorFormState, value: any) =>
     setForm((f) => ({ ...f, [field]: value }));
 
+  const { data: doctorOptions = [] } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: () => usersApi.doctors(),
+    enabled: form.role === "assistant_doctor",
+  });
+
+  // Chambers list needed for schedule display labels
+  const { data: allChambers = [] } = useQuery({
+    queryKey: ["chambers"],
+    queryFn: () => chambersApi.list(false),
+  });
+
+  // When chamber selection changes, keep chamber_schedules in sync
+  const handleChamberChange = (ids: string[]) => {
+    setForm((f) => {
+      const newSchedules: ChamberScheduleFormItem[] = ids.map(
+        (id) =>
+          f.chamber_schedules.find((cs) => cs.chamber_id === id) ?? {
+            chamber_id: id,
+            visit_days: [],
+            visit_time_start: "",
+            visit_time_end: "",
+          }
+      );
+      return { ...f, chamber_ids: ids, chamber_schedules: newSchedules };
+    });
+  };
+
+  // Update a single field within one chamber's schedule
+  const updateSchedule = (
+    chamberId: string,
+    patch: Partial<ChamberScheduleFormItem>
+  ) => {
+    setForm((f) => ({
+      ...f,
+      chamber_schedules: f.chamber_schedules.map((cs) =>
+        cs.chamber_id === chamberId ? { ...cs, ...patch } : cs
+      ),
+    }));
+  };
+
   return (
     <>
       {/* ── Account ─────────────────────── */}
@@ -246,18 +300,21 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
             value={form.full_name}
             onChange={(e) => set("full_name", e.target.value)}
             placeholder="Dr. Rahim Uddin"
-            style={inputStyle}
+            style={{ ...inputStyle, background: (isEdit || !!form.existing_user_id) ? colors.bg : colors.white }}
+            disabled={isEdit || !!form.existing_user_id}
           />
         </Field>
-        <Field label={isEdit ? "Username" : "Username *"}>
-          <input
-            value={form.username}
-            onChange={(e) => set("username", e.target.value)}
-            placeholder="dr.rahim"
-            style={{ ...inputStyle, background: isEdit ? colors.bg : colors.white }}
-            disabled={isEdit}
-          />
-        </Field>
+        {!form.existing_user_id && (
+          <Field label={isEdit ? "Username" : "Username *"}>
+            <input
+              value={form.username}
+              onChange={(e) => set("username", e.target.value)}
+              placeholder="dr.rahim"
+              style={{ ...inputStyle, background: isEdit ? colors.bg : colors.white }}
+              disabled={isEdit}
+            />
+          </Field>
+        )}
       </FieldRow>
       <FieldRow>
         <Field label="Email *">
@@ -265,10 +322,11 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
             type="email"
             value={form.email}
             onChange={(e) => set("email", e.target.value)}
-            style={inputStyle}
+            style={{ ...inputStyle, background: !!form.existing_user_id ? colors.bg : colors.white }}
+            disabled={!!form.existing_user_id}
           />
         </Field>
-        {!isEdit ? (
+        {!isEdit && !form.existing_user_id ? (
           <Field label="Password *">
             <input
               type="password"
@@ -277,7 +335,7 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
               style={inputStyle}
             />
           </Field>
-        ) : (
+        ) : isEdit ? (
           <Field label="Status">
             <label style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, cursor: "pointer" }}>
               <input
@@ -288,11 +346,18 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
               <span style={{ fontSize: font.sm }}>Active account</span>
             </label>
           </Field>
-        )}
+        ) : null}
       </FieldRow>
       <FieldRow>
         <Field label="Role *">
-          <select value={form.role} onChange={(e) => set("role", e.target.value)} style={inputStyle}>
+          <select
+            value={form.role}
+            onChange={(e) => {
+              const newRole = e.target.value as "doctor" | "assistant_doctor";
+              setForm((f) => ({ ...f, role: newRole, supervisor_doctor_id: newRole === "doctor" ? "" : f.supervisor_doctor_id }));
+            }}
+            style={inputStyle}
+          >
             <option value="doctor">Doctor</option>
             <option value="assistant_doctor">Assistant Doctor</option>
           </select>
@@ -312,6 +377,23 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
           </select>
         </Field>
       </FieldRow>
+
+      {form.role === "assistant_doctor" && (
+        <div style={{ marginBottom: 14 }}>
+          <Field label={<>Supervisor Doctor <span style={{ color: "#dc2626" }}>*</span></>}>
+            <select
+              value={form.supervisor_doctor_id}
+              onChange={(e) => set("supervisor_doctor_id", e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">— Select a doctor —</option>
+              {doctorOptions.filter((d) => d.role === "doctor").map((d) => (
+                <option key={d.id} value={d.id}>{d.full_name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      )}
 
       {/* ── Professional ─────────────────── */}
       <div style={sectionHeadStyle}>Professional</div>
@@ -356,32 +438,91 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
         </Field>
       </div>
 
-      {/* ── Schedule ─────────────────────── */}
-      <div style={sectionHeadStyle}>Schedule</div>
-      <div style={{ marginBottom: 14 }}>
-        <label style={labelStyle}>Visit Days</label>
-        <DayPicker value={form.visit_days} onChange={(d) => set("visit_days", d)} />
+      {/* ── Chambers & Visit Schedule ─────── */}
+      <div style={sectionHeadStyle}>Chambers &amp; Visit Schedule</div>
+      <div style={{ marginBottom: 12 }}>
+        <ChamberCheckList
+          selected={form.chamber_ids}
+          onChange={handleChamberChange}
+        />
       </div>
-      <FieldRow>
-        <Field label="From">
-          <input
-            type="time"
-            value={form.visit_time_start}
-            onChange={(e) => set("visit_time_start", e.target.value)}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="To">
-          <input
-            type="time"
-            value={form.visit_time_end}
-            onChange={(e) => set("visit_time_end", e.target.value)}
-            style={inputStyle}
-          />
-        </Field>
-      </FieldRow>
+
+      {/* Per-chamber schedule rows */}
+      {form.chamber_ids.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {form.chamber_ids.map((chamberId) => {
+            const chamber = allChambers.find((c: any) => c.id === chamberId);
+            const sched =
+              form.chamber_schedules.find((cs) => cs.chamber_id === chamberId) ?? {
+                chamber_id: chamberId,
+                visit_days: [],
+                visit_time_start: "",
+                visit_time_end: "",
+              };
+
+            return (
+              <div
+                key={chamberId}
+                style={{
+                  marginBottom: 10,
+                  padding: "12px 14px",
+                  background: "#f8fafc",
+                  border: `1px solid ${colors.borderLight}`,
+                  borderRadius: radius.md,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: font.sm,
+                    fontWeight: 700,
+                    color: colors.text,
+                    marginBottom: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  🏥 {chamber?.name ?? "Chamber"}
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={labelStyle}>Visit Days</label>
+                  <DayPicker
+                    value={sched.visit_days}
+                    onChange={(days) =>
+                      updateSchedule(chamberId, { visit_days: days })
+                    }
+                  />
+                </div>
+                <FieldRow>
+                  <Field label="From">
+                    <input
+                      type="time"
+                      value={sched.visit_time_start}
+                      onChange={(e) =>
+                        updateSchedule(chamberId, { visit_time_start: e.target.value })
+                      }
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="To">
+                    <input
+                      type="time"
+                      value={sched.visit_time_end}
+                      onChange={(e) =>
+                        updateSchedule(chamberId, { visit_time_end: e.target.value })
+                      }
+                      style={inputStyle}
+                    />
+                  </Field>
+                </FieldRow>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {isEdit && (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 8 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
             <input
               type="checkbox"
@@ -392,15 +533,6 @@ function DoctorFormFields({ form, setForm, specialities, isEdit }: DoctorFormPro
           </label>
         </div>
       )}
-
-      {/* ── Chambers ─────────────────────── */}
-      <div style={sectionHeadStyle}>Chambers</div>
-      <div style={{ marginBottom: 8 }}>
-        <ChamberCheckList
-          selected={form.chamber_ids}
-          onChange={(ids) => set("chamber_ids", ids)}
-        />
-      </div>
     </>
   );
 }
@@ -411,12 +543,27 @@ function CreateDoctorModal({
   specialities,
   onClose,
   onCreated,
+  prefill,
 }: {
   specialities: Speciality[];
   onClose: () => void;
   onCreated: () => void;
+  prefill?: DoctorProfile;
 }) {
-  const [form, setForm] = useState<DoctorFormState>(emptyForm);
+  const [form, setForm] = useState<DoctorFormState>(() =>
+    prefill
+      ? {
+          ...emptyForm(),
+          full_name: prefill.full_name,
+          username: prefill.username,
+          email: prefill.email,
+          role: prefill.role,
+          chamber_ids: prefill.chamber_ids,
+          supervisor_doctor_id: prefill.supervisor_doctor_id ?? "",
+          existing_user_id: prefill.user_id,
+        }
+      : emptyForm()
+  );
   const [error, setError] = useState("");
   const qc = useQueryClient();
 
@@ -431,12 +578,15 @@ function CreateDoctorModal({
 
   const handleSubmit = () => {
     setError("");
-    if (!form.full_name.trim()) return setError("Full name is required");
-    if (!form.username.trim()) return setError("Username is required");
-    if (!form.password) return setError("Password is required");
-    if (!form.email.trim()) return setError("Email is required");
     if (!form.speciality_id) return setError("Select a speciality");
     if (!form.qualifications.trim()) return setError("Qualifications are required");
+    if (form.role === "assistant_doctor" && !form.supervisor_doctor_id) return setError("Select a supervisor doctor");
+    if (!form.existing_user_id) {
+      if (!form.username.trim()) return setError("Username is required");
+      if (!form.password) return setError("Password is required");
+      if (!form.email.trim()) return setError("Email is required");
+      if (!form.full_name.trim()) return setError("Full name is required");
+    }
 
     mutation.mutate({
       full_name: form.full_name,
@@ -450,10 +600,15 @@ function CreateDoctorModal({
       consultation_fee: form.consultation_fee ? parseFloat(form.consultation_fee) : null,
       experience_years: form.experience_years ? parseInt(form.experience_years) : null,
       is_available: form.is_available,
-      visit_days: form.visit_days,
-      visit_time_start: form.visit_time_start || null,
-      visit_time_end: form.visit_time_end || null,
       chamber_ids: form.chamber_ids,
+      chamber_schedules: form.chamber_schedules.map((cs) => ({
+        chamber_id: cs.chamber_id,
+        visit_days: cs.visit_days,
+        visit_time_start: cs.visit_time_start || null,
+        visit_time_end: cs.visit_time_end || null,
+      })),
+      supervisor_doctor_id: form.supervisor_doctor_id || null,
+      existing_user_id: form.existing_user_id || null,
     });
   };
 
@@ -494,6 +649,7 @@ function EditDoctorModal({
     if (!form.full_name.trim()) return setError("Full name is required");
     if (!form.speciality_id) return setError("Select a speciality");
     if (!form.qualifications.trim()) return setError("Qualifications are required");
+    if (form.role === "assistant_doctor" && !form.supervisor_doctor_id) return setError("Select a supervisor doctor");
 
     mutation.mutate({
       full_name: form.full_name,
@@ -506,10 +662,14 @@ function EditDoctorModal({
       consultation_fee: form.consultation_fee ? parseFloat(form.consultation_fee) : null,
       experience_years: form.experience_years ? parseInt(form.experience_years) : null,
       is_available: form.is_available,
-      visit_days: form.visit_days,
-      visit_time_start: form.visit_time_start || null,
-      visit_time_end: form.visit_time_end || null,
       chamber_ids: form.chamber_ids,
+      chamber_schedules: form.chamber_schedules.map((cs) => ({
+        chamber_id: cs.chamber_id,
+        visit_days: cs.visit_days,
+        visit_time_start: cs.visit_time_start || null,
+        visit_time_end: cs.visit_time_end || null,
+      })),
+      supervisor_doctor_id: form.supervisor_doctor_id || null,
     });
   };
 
@@ -773,6 +933,7 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<DoctorProfile | null>(null);
+  const [addProfileFor, setAddProfileFor] = useState<DoctorProfile | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast, show: showToast, dismiss } = useToast();
   const qc = useQueryClient();
@@ -810,12 +971,20 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
   });
 
   const schedule = (d: DoctorProfile) => {
-    const days = d.visit_days.join(", ");
-    const time =
-      d.visit_time_start && d.visit_time_end
-        ? ` · ${d.visit_time_start}–${d.visit_time_end}`
-        : "";
-    return days ? `${days}${time}` : "—";
+    const filled = (d.chamber_schedules ?? []).filter(
+      (cs) => cs.visit_days.length > 0
+    );
+    if (filled.length === 0) return "—";
+    if (filled.length === 1) {
+      const cs = filled[0];
+      const days = cs.visit_days.join(", ");
+      const time =
+        cs.visit_time_start && cs.visit_time_end
+          ? ` · ${cs.visit_time_start}–${cs.visit_time_end}`
+          : "";
+      return `${days}${time}`;
+    }
+    return `${filled.length} chambers`;
   };
 
   return (
@@ -829,6 +998,17 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
           onCreated={() => {
             setShowCreate(false);
             showToast("Doctor added successfully", "success");
+          }}
+        />
+      )}
+      {addProfileFor && (
+        <CreateDoctorModal
+          specialities={specialities}
+          prefill={addProfileFor}
+          onClose={() => setAddProfileFor(null)}
+          onCreated={() => {
+            setAddProfileFor(null);
+            showToast("Doctor profile added successfully", "success");
           }}
         />
       )}
@@ -956,26 +1136,26 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
 
                 {/* Speciality */}
                 <td style={{ padding: "12px 16px", fontSize: font.sm, color: colors.text, whiteSpace: "nowrap" }}>
-                  {d.speciality_name}
+                  {d.profile_complete ? d.speciality_name : <span style={{ color: colors.textMuted, fontStyle: "italic" }}>—</span>}
                 </td>
 
                 {/* Qualifications */}
                 <td style={{ padding: "12px 16px", fontSize: font.sm, color: colors.textMuted, maxWidth: 200 }}>
-                  <span title={d.qualifications}>
-                    {d.qualifications.length > 40
-                      ? d.qualifications.slice(0, 40) + "…"
-                      : d.qualifications}
-                  </span>
+                  {d.profile_complete ? (
+                    <span title={d.qualifications}>
+                      {d.qualifications.length > 40 ? d.qualifications.slice(0, 40) + "…" : d.qualifications}
+                    </span>
+                  ) : <span style={{ fontStyle: "italic" }}>—</span>}
                 </td>
 
                 {/* Fee */}
                 <td style={{ padding: "12px 16px", fontSize: font.sm, color: colors.text, whiteSpace: "nowrap" }}>
-                  {d.consultation_fee != null ? `৳${d.consultation_fee.toLocaleString()}` : "—"}
+                  {d.profile_complete && d.consultation_fee != null ? `৳${d.consultation_fee.toLocaleString()}` : "—"}
                 </td>
 
                 {/* Schedule */}
                 <td style={{ padding: "12px 16px", fontSize: font.sm, color: colors.textMuted, whiteSpace: "nowrap" }}>
-                  {schedule(d)}
+                  {d.profile_complete ? schedule(d) : "—"}
                 </td>
 
                 {/* Status */}
@@ -995,59 +1175,56 @@ function DoctorsTab({ specialities }: { specialities: Speciality[] }) {
                     >
                       {d.is_active ? "Active" : "Inactive"}
                     </span>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        background: d.is_available ? "#f0fdf4" : "#f9fafb",
-                        color: d.is_available ? colors.success : colors.textMuted,
-                        width: "fit-content",
-                      }}
-                    >
-                      {d.is_available ? "Available" : "Unavailable"}
-                    </span>
+                    {d.profile_complete ? (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          background: d.is_available ? "#f0fdf4" : "#f9fafb",
+                          color: d.is_available ? colors.success : colors.textMuted,
+                          width: "fit-content",
+                        }}
+                      >
+                        {d.is_available ? "Available" : "Unavailable"}
+                      </span>
+                    ) : (
+                      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: "11px", fontWeight: 600, background: "#fef9c3", color: "#92400e", width: "fit-content" }}>
+                        Profile Incomplete
+                      </span>
+                    )}
                   </div>
                 </td>
 
                 {/* Actions */}
                 <td style={{ padding: "12px 16px" }}>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={() => setEditing(d)}
-                      style={{
-                        padding: "4px 14px",
-                        background: colors.primaryLight,
-                        color: colors.primary,
-                        border: `1px solid #bfdbfe`,
-                        borderRadius: radius.sm,
-                        cursor: "pointer",
-                        fontSize: font.sm,
-                        fontWeight: 500,
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() =>
-                        toggleActiveMutation.mutate({ id: d.id, is_active: !d.is_active })
-                      }
-                      disabled={toggleActiveMutation.isPending}
-                      style={{
-                        padding: "4px 14px",
-                        background: d.is_active ? "#fef2f2" : "#f0fdf4",
-                        color: d.is_active ? colors.danger : colors.success,
-                        border: `1px solid ${d.is_active ? "#fecaca" : "#bbf7d0"}`,
-                        borderRadius: radius.sm,
-                        cursor: "pointer",
-                        fontSize: font.sm,
-                        fontWeight: 500,
-                      }}
-                    >
-                      {d.is_active ? "Deactivate" : "Activate"}
-                    </button>
+                    {d.profile_complete ? (
+                      <>
+                        <button
+                          onClick={() => setEditing(d)}
+                          style={{ padding: "4px 14px", background: colors.primaryLight, color: colors.primary, border: `1px solid #bfdbfe`, borderRadius: radius.sm, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleActiveMutation.mutate({ id: d.id, is_active: !d.is_active })}
+                          disabled={toggleActiveMutation.isPending}
+                          style={{ padding: "4px 14px", background: d.is_active ? "#fef2f2" : "#f0fdf4", color: d.is_active ? colors.danger : colors.success, border: `1px solid ${d.is_active ? "#fecaca" : "#bbf7d0"}`, borderRadius: radius.sm, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+                        >
+                          {d.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setAddProfileFor(d)}
+                        style={{ padding: "4px 14px", background: "#fefce8", color: "#92400e", border: `1px solid #fde68a`, borderRadius: radius.sm, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+                      >
+                        Add Profile
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

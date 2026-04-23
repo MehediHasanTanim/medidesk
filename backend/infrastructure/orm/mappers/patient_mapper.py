@@ -20,6 +20,7 @@ class PatientMapper:
             allergies=model.allergies or [],
             chronic_diseases=model.chronic_diseases or [],
             family_history=model.family_history,
+            age_years=model.age_years,
             is_active=model.is_active,
             created_at=model.created_at.date() if model.created_at else None,
         )
@@ -38,5 +39,6 @@ class PatientMapper:
             "allergies": entity.allergies,
             "chronic_diseases": entity.chronic_diseases,
             "family_history": entity.family_history,
+            "age_years": entity.age_years,
             "is_active": entity.is_active,
         }

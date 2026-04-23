@@ -92,6 +92,7 @@ class UserListView(APIView):
                     "role": u.role.value,
                     "chamber_ids": [str(c) for c in u.chamber_ids],
                     "is_active": u.is_active,
+                    "supervisor_doctor_id": str(u.supervisor_id) if u.supervisor_id else None,
                 }
                 for u in users
             ],
@@ -117,6 +118,7 @@ class UserListView(APIView):
             role=data["role"],
             password=data["password"],
             chamber_ids=[str(c) for c in data.get("chamber_ids", [])],
+            supervisor_doctor_id=str(data["supervisor_doctor_id"]) if data.get("supervisor_doctor_id") else None,
         )
         try:
             result = CreateUserUseCase(uow=DjangoUnitOfWork()).execute(dto)
@@ -146,6 +148,7 @@ class UserDetailView(APIView):
             "role": user.role.value,
             "chamber_ids": [str(c) for c in user.chamber_ids],
             "is_active": user.is_active,
+            "supervisor_doctor_id": str(user.supervisor_id) if user.supervisor_id else None,
         })
 
     @extend_schema(
@@ -168,6 +171,7 @@ class UserDetailView(APIView):
             role=data.get("role"),
             is_active=data.get("is_active"),
             chamber_ids=[str(c) for c in data["chamber_ids"]] if "chamber_ids" in data else None,
+            supervisor_doctor_id=str(data["supervisor_doctor_id"]) if data.get("supervisor_doctor_id") else ("" if "supervisor_doctor_id" in data else None),
         )
         try:
             result = UpdateUserUseCase(uow=DjangoUnitOfWork()).execute(dto)

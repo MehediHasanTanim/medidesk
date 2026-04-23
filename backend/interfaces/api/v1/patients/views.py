@@ -16,11 +16,12 @@ from interfaces.api.v1.patients.serializers import (
     RegisterPatientSerializer,
     UpdatePatientSerializer,
 )
-from interfaces.permissions import RolePermission
+from interfaces.permissions import ModulePermission, RolePermission
 
 
 class PatientRegistrationView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "receptionist", "assistant"])]
+    # patients.create: doctor, receptionist, assistant — NOT assistant_doctor (matrix enforces this).
+    permission_classes = [IsAuthenticated, ModulePermission("patients")]
 
     @extend_schema(
         tags=["patients"],
@@ -52,14 +53,13 @@ class PatientRegistrationView(APIView):
 
 
 class PatientSearchView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor", "receptionist", "assistant"])]
+    permission_classes = [IsAuthenticated, ModulePermission("patients")]
 
     @extend_schema(
         tags=["patients"],
         summary="Search / list patients",
         description=(
             "Returns a paginated list of active patients. "
-            "assistant_doctor role is scoped to patients with appointments under them. "
             "Pass `q` to filter by name, phone, or patient ID."
         ),
         parameters=[
@@ -79,29 +79,13 @@ class PatientSearchView(APIView):
         from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
         repo = DjangoPatientRepository()
 
-        is_assistant_doctor = getattr(request.user, "role", None) == "assistant_doctor"
-        doctor_id = request.user.id if is_assistant_doctor else None
+        patients = repo.search(query, limit=limit, offset=offset) if query else repo.list_all(limit, offset)
 
-        if is_assistant_doctor:
-            patients = (
-                repo.search_by_doctor(query, doctor_id, limit=limit, offset=offset)
-                if query
-                else repo.list_by_doctor(doctor_id, limit=limit, offset=offset)
+        count_qs = PatientModel.objects.filter(is_active=True)
+        if query:
+            count_qs = count_qs.filter(
+                Q(full_name__icontains=query) | Q(phone__icontains=query) | Q(patient_id__icontains=query)
             )
-            # Count
-            count_qs = PatientModel.objects.filter(is_active=True, appointments__doctor_id=doctor_id).distinct()
-            if query:
-                count_qs = count_qs.filter(
-                    Q(full_name__icontains=query) | Q(phone__icontains=query) | Q(patient_id__icontains=query)
-                )
-        else:
-            patients = repo.search(query, limit=limit, offset=offset) if query else repo.list_all(limit, offset)
-            # Count
-            count_qs = PatientModel.objects.filter(is_active=True)
-            if query:
-                count_qs = count_qs.filter(
-                    Q(full_name__icontains=query) | Q(phone__icontains=query) | Q(patient_id__icontains=query)
-                )
 
         return Response({
             "count": count_qs.count(),
@@ -112,15 +96,14 @@ class PatientSearchView(APIView):
 
 
 class PatientDetailView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor", "receptionist", "assistant"])]
+    permission_classes = [IsAuthenticated, ModulePermission("patients")]
 
     @extend_schema(
         tags=["patients"],
         summary="Get patient by ID",
-        description="Returns full patient demographics and medical background. assistant_doctor access is scoped to their own patients.",
+        description="Returns full patient demographics and medical background.",
         responses={
             200: PatientResponseSerializer,
-            403: OpenApiResponse(description="Access denied"),
             404: OpenApiResponse(description="Patient not found"),
         },
     )
@@ -130,10 +113,6 @@ class PatientDetailView(APIView):
         patient = repo.get_by_id(patient_id)
         if not patient:
             return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            if not repo.has_appointment_with_doctor(patient_id, request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
 
         return Response(PatientResponseSerializer(patient.__dict__).data)
 
@@ -171,10 +150,12 @@ class PatientDetailView(APIView):
 @extend_schema(
     tags=["patients"],
     summary="Patient full history",
-    description="Returns complete clinical history for a patient: demographics, appointments, consultations (with vitals & prescriptions), and uploaded reports. Accessible to doctor and assistant_doctor (scoped).",
+    description="Returns complete clinical history for a patient: demographics, appointments, consultations (with vitals & prescriptions), and uploaded reports. Accessible to doctor and assistant_doctor.",
 )
 class PatientHistoryView(APIView):
-    permission_classes = [IsAuthenticated, RolePermission(["doctor", "assistant_doctor"])]
+    # Full clinical history includes consultations, prescriptions, test orders —
+    # restricted to clinical staff only; RolePermission narrows beyond patients.view.
+    permission_classes = [IsAuthenticated, ModulePermission("patients"), RolePermission(["doctor", "assistant_doctor"])]
 
     def get(self, request: Request, patient_id: uuid.UUID) -> Response:
         from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
@@ -187,10 +168,6 @@ class PatientHistoryView(APIView):
         patient = patient_repo.get_by_id(patient_id)
         if not patient:
             return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        if getattr(request.user, "role", None) == "assistant_doctor":
-            if not patient_repo.has_appointment_with_doctor(patient_id, request.user.id):
-                return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
 
         # Appointments
         appointments = DjangoAppointmentRepository().get_by_patient(patient_id, limit=50)
@@ -292,9 +269,89 @@ class PatientHistoryView(APIView):
             for r in reports_qs
         ]
 
+        # Aggregate all unique non-empty diagnoses across every consultation for
+        # this patient (not capped to the 30 displayed), most recent first.
+        from infrastructure.orm.models.consultation_model import ConsultationModel
+        past_diagnoses = list(
+            dict.fromkeys(
+                d for d in (
+                    ConsultationModel.objects
+                    .filter(patient_id=patient_id, is_draft=False)
+                    .exclude(diagnosis="")
+                    .order_by("-created_at")
+                    .values_list("diagnosis", flat=True)
+                )
+                if d
+            )
+        )
+
+        # Patient-level notes (not tied to any consultation)
+        from infrastructure.orm.models.patient_note_model import PatientNoteModel
+        notes_qs = (
+            PatientNoteModel.objects
+            .filter(patient_id=patient_id)
+            .select_related("created_by")
+            .order_by("-created_at")[:50]
+        )
+        note_list = [
+            {
+                "id": str(n.id),
+                "content": n.content,
+                "created_by_name": n.created_by.full_name if n.created_by else "",
+                "created_by_role": n.created_by.role if n.created_by else "",
+                "created_at": n.created_at.isoformat(),
+            }
+            for n in notes_qs
+        ]
+
         return Response({
             "patient": PatientResponseSerializer(patient.__dict__).data,
+            "past_diagnoses": past_diagnoses,
             "appointments": appt_list,
             "consultations": consultation_list,
             "reports": report_list,
+            "notes": note_list,
         })
+
+
+@extend_schema(
+    tags=["patients"],
+    summary="Create a patient note",
+    description=(
+        "Adds a free-form staff note to a patient record. "
+        "Notes are not tied to any consultation — use them for administrative "
+        "observations, reception reminders, or clinical flags."
+    ),
+)
+class PatientNoteCreateView(APIView):
+    permission_classes = [IsAuthenticated, ModulePermission("patients")]
+
+    def post(self, request: Request, patient_id: uuid.UUID) -> Response:
+        from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
+        from infrastructure.orm.models.patient_note_model import PatientNoteModel
+
+        content = (request.data.get("content") or "").strip()
+        if not content:
+            return Response({"error": "Note content is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        repo = DjangoPatientRepository()
+        if not repo.get_by_id(patient_id):
+            return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        note = PatientNoteModel.objects.create(
+            patient_id=patient_id,
+            content=content,
+            created_by=request.user,
+        )
+        note.refresh_from_db()  # populate auto fields (created_at)
+
+        return Response(
+            {
+                "id": str(note.id),
+                "content": note.content,
+                "created_by_name": note.created_by.full_name if note.created_by else "",
+                "created_by_role": note.created_by.role if note.created_by else "",
+                "created_at": note.created_at.isoformat(),
+            },
+            status=status.HTTP_201_CREATED,
+        )

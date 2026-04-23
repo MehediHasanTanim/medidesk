@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from application.dtos.doctor_dto import (
+    ChamberScheduleDTO,
     CreateDoctorProfileDTO,
     CreateSpecialityDTO,
     UpdateDoctorProfileDTO,
@@ -161,8 +162,57 @@ class DoctorProfileListView(APIView):
             is_available=is_available,
             search=search,
         )
+
+        # Also include doctor-role users who have no profile yet
+        from infrastructure.orm.models.doctor_model import DoctorProfileModel
+        from infrastructure.orm.models.user_model import UserModel
+        from application.dtos.doctor_dto import DoctorProfileDTO
+
+        profiled_user_ids = set(DoctorProfileModel.objects.values_list("user_id", flat=True))
+        stub_qs = UserModel.objects.prefetch_related("chambers").filter(
+            role__in=["doctor", "assistant_doctor"],
+            is_active=True,
+        ).exclude(id__in=profiled_user_ids)
+
+        # Apply search filter to stubs if provided
+        if search:
+            from django.db.models import Q
+            stub_qs = stub_qs.filter(Q(full_name__icontains=search) | Q(username__icontains=search))
+
+        # Exclude stubs when profile-specific filters are active
+        if speciality_id or is_available is not None:
+            stub_qs = stub_qs.none()
+
+        stubs = [
+            DoctorProfileDTO(
+                id=str(u.id),
+                user_id=str(u.id),
+                username=u.username,
+                full_name=u.full_name,
+                email=u.email,
+                role=u.role,
+                is_active=u.is_active,
+                speciality_id="",
+                speciality_name="",
+                qualifications="",
+                bio="",
+                consultation_fee=None,
+                experience_years=None,
+                is_available=True,
+                visit_days=[],
+                visit_time_start=None,
+                visit_time_end=None,
+                chamber_ids=[str(c.id) for c in u.chambers.all()],
+                supervisor_doctor_id=str(u.supervisor_id) if u.supervisor_id else None,
+                profile_complete=False,
+                chamber_schedules=[],
+            )
+            for u in stub_qs
+        ]
+
+        all_profiles = result + stubs
         return Response(
-            DoctorProfileResponseSerializer([d.__dict__ for d in result], many=True).data
+            DoctorProfileResponseSerializer([d.__dict__ for d in all_profiles], many=True).data
         )
 
     @extend_schema(
@@ -183,6 +233,16 @@ class DoctorProfileListView(APIView):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
 
+        chamber_schedules = [
+            ChamberScheduleDTO(
+                chamber_id=str(cs["chamber_id"]),
+                visit_days=cs.get("visit_days") or [],
+                visit_time_start=cs["visit_time_start"].strftime("%H:%M") if cs.get("visit_time_start") else None,
+                visit_time_end=cs["visit_time_end"].strftime("%H:%M") if cs.get("visit_time_end") else None,
+            )
+            for cs in (data.get("chamber_schedules") or [])
+        ]
+
         dto = CreateDoctorProfileDTO(
             username=data["username"],
             password=data["password"],
@@ -199,6 +259,9 @@ class DoctorProfileListView(APIView):
             visit_time_start=data["visit_time_start"].strftime("%H:%M") if data.get("visit_time_start") else None,
             visit_time_end=data["visit_time_end"].strftime("%H:%M") if data.get("visit_time_end") else None,
             chamber_ids=[str(c) for c in (data.get("chamber_ids") or [])],
+            supervisor_doctor_id=str(data["supervisor_doctor_id"]) if data.get("supervisor_doctor_id") else None,
+            existing_user_id=str(data["existing_user_id"]) if data.get("existing_user_id") else None,
+            chamber_schedules=chamber_schedules,
         )
 
         try:
@@ -243,6 +306,19 @@ class DoctorProfileDetailView(APIView):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
 
+        raw_schedules = data.get("chamber_schedules")
+        update_chamber_schedules = None
+        if raw_schedules is not None:
+            update_chamber_schedules = [
+                ChamberScheduleDTO(
+                    chamber_id=str(cs["chamber_id"]),
+                    visit_days=cs.get("visit_days") or [],
+                    visit_time_start=cs["visit_time_start"].strftime("%H:%M") if cs.get("visit_time_start") else None,
+                    visit_time_end=cs["visit_time_end"].strftime("%H:%M") if cs.get("visit_time_end") else None,
+                )
+                for cs in raw_schedules
+            ]
+
         dto = UpdateDoctorProfileDTO(
             profile_id=str(profile_id),
             full_name=data.get("full_name"),
@@ -259,6 +335,8 @@ class DoctorProfileDetailView(APIView):
             visit_time_start=data["visit_time_start"].strftime("%H:%M") if data.get("visit_time_start") else None,
             visit_time_end=data["visit_time_end"].strftime("%H:%M") if data.get("visit_time_end") else None,
             chamber_ids=[str(c) for c in data["chamber_ids"]] if data.get("chamber_ids") is not None else None,
+            supervisor_doctor_id=str(data["supervisor_doctor_id"]) if data.get("supervisor_doctor_id") else ("" if "supervisor_doctor_id" in data else None),
+            chamber_schedules=update_chamber_schedules,
         )
 
         try:

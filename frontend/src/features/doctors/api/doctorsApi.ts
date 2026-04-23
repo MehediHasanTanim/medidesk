@@ -21,6 +21,15 @@ export interface UpdateSpecialityPayload {
   is_active?: boolean;
 }
 
+// ── Chamber Schedule ───────────────────────────────────────────────────────
+
+export interface ChamberSchedule {
+  chamber_id: string;
+  visit_days: string[];
+  visit_time_start: string | null;  // "HH:MM"
+  visit_time_end: string | null;    // "HH:MM"
+}
+
 // ── Doctor Profile ─────────────────────────────────────────────────────────
 
 export interface DoctorProfile {
@@ -42,6 +51,9 @@ export interface DoctorProfile {
   visit_time_start: string | null; // "HH:MM"
   visit_time_end: string | null;   // "HH:MM"
   chamber_ids: string[];
+  supervisor_doctor_id?: string | null;
+  profile_complete: boolean;
+  chamber_schedules: ChamberSchedule[];
 }
 
 export interface CreateDoctorPayload {
@@ -60,6 +72,9 @@ export interface CreateDoctorPayload {
   visit_time_start?: string | null;
   visit_time_end?: string | null;
   chamber_ids?: string[];
+  supervisor_doctor_id?: string | null;
+  existing_user_id?: string | null;
+  chamber_schedules?: ChamberSchedule[];
 }
 
 export interface UpdateDoctorPayload {
@@ -77,6 +92,8 @@ export interface UpdateDoctorPayload {
   visit_time_start?: string | null;
   visit_time_end?: string | null;
   chamber_ids?: string[];
+  supervisor_doctor_id?: string | null;
+  chamber_schedules?: ChamberSchedule[];
 }
 
 export interface ListDoctorParams {

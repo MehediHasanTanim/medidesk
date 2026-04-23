@@ -6,7 +6,7 @@ Usage:
     python create_user.py --username john --full-name "John Doe" --role doctor --password Secret123
     python create_user.py --username sa --full-name "Super Admin" --role super_admin --password Admin1234! --email sa@clinic.com
 
-Roles: super_admin, admin, doctor, assistant_doctor, receptionist, assistant
+Roles: super_admin, admin, doctor, assistant_doctor, receptionist, assistant, trainee
 """
 
 import argparse

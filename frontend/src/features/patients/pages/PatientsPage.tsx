@@ -60,17 +60,18 @@ function TagEditor({
 function RegisterModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [form, setForm] = useState<RegisterPatientPayload>({
     full_name: "", phone: "", gender: "M", address: "",
-    date_of_birth: "", email: "", national_id: "",
+    date_of_birth: "", age_years: null, email: "", national_id: "",
     allergies: [], chronic_diseases: [], family_history: "",
   });
   const [error, setError] = useState("");
-  const set = (k: keyof RegisterPatientPayload, v: string | string[]) =>
+  const set = (k: keyof RegisterPatientPayload, v: string | string[] | number | null) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const mutation = useMutation({
     mutationFn: () => patientsApi.register({
       ...form,
       date_of_birth: form.date_of_birth || null,
+      age_years: form.date_of_birth ? null : (form.age_years ?? null),
       email: form.email || null,
       national_id: form.national_id || null,
     }),
@@ -110,7 +111,20 @@ function RegisterModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Date of Birth</label>
-            <input type="date" value={form.date_of_birth ?? ""} onChange={(e) => set("date_of_birth", e.target.value)} style={inputStyle} />
+            <input type="date" value={form.date_of_birth ?? ""} onChange={(e) => { set("date_of_birth", e.target.value); if (e.target.value) set("age_years", null); }} style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>
+              Age (years){form.date_of_birth ? "" : " *"}
+            </label>
+            <input
+              type="number" min={0} max={150}
+              value={form.date_of_birth ? "" : (form.age_years ?? "")}
+              disabled={!!form.date_of_birth}
+              placeholder={form.date_of_birth ? "Computed from DOB" : "Enter age"}
+              onChange={(e) => set("age_years", e.target.value ? parseInt(e.target.value, 10) : null)}
+              style={{ ...inputStyle, background: form.date_of_birth ? colors.borderLight : colors.bg, color: form.date_of_birth ? colors.textMuted : colors.text }}
+            />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>National ID</label>
@@ -150,6 +164,7 @@ function EditModal({ patient, onClose, onDone }: { patient: Patient; onClose: ()
     gender: patient.gender,
     address: patient.address,
     date_of_birth: patient.date_of_birth ?? "",
+    age_years: patient.age_years ?? null,
     email: patient.email ?? "",
     national_id: patient.national_id ?? "",
     allergies: patient.allergies,
@@ -157,13 +172,14 @@ function EditModal({ patient, onClose, onDone }: { patient: Patient; onClose: ()
     family_history: patient.family_history,
   });
   const [error, setError] = useState("");
-  const set = (k: keyof UpdatePatientPayload, v: string | string[]) =>
+  const set = (k: keyof UpdatePatientPayload, v: string | string[] | number | null) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const mutation = useMutation({
     mutationFn: () => patientsApi.update(patient.id, {
       ...form,
       date_of_birth: (form.date_of_birth as string) || null,
+      age_years: form.date_of_birth ? null : (form.age_years ?? null),
       email: (form.email as string) || null,
       national_id: (form.national_id as string) || null,
     }),
@@ -204,7 +220,20 @@ function EditModal({ patient, onClose, onDone }: { patient: Patient; onClose: ()
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>Date of Birth</label>
-            <input type="date" value={form.date_of_birth as string ?? ""} onChange={(e) => set("date_of_birth", e.target.value)} style={inputStyle} />
+            <input type="date" value={form.date_of_birth as string ?? ""} onChange={(e) => { set("date_of_birth", e.target.value); if (e.target.value) set("age_years", null); }} style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>
+              Age (years){form.date_of_birth ? "" : " *"}
+            </label>
+            <input
+              type="number" min={0} max={150}
+              value={form.date_of_birth ? "" : (form.age_years ?? "")}
+              disabled={!!form.date_of_birth}
+              placeholder={form.date_of_birth ? "Computed from DOB" : "Enter age"}
+              onChange={(e) => set("age_years", e.target.value ? parseInt(e.target.value, 10) : null)}
+              style={{ ...inputStyle, background: form.date_of_birth ? colors.borderLight : colors.bg, color: form.date_of_birth ? colors.textMuted : colors.text }}
+            />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", marginBottom: 5, fontWeight: 500, fontSize: font.base }}>National ID</label>

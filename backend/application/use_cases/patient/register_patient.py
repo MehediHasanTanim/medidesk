@@ -29,6 +29,7 @@ class RegisterPatientUseCase:
                 gender=dto.gender,
                 address=dto.address,
                 date_of_birth=dob,
+                age_years=dto.age_years if not dob else None,
                 email=dto.email,
                 national_id=dto.national_id,
                 allergies=dto.allergies or [],

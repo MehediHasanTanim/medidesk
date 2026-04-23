@@ -30,12 +30,21 @@ class UserModel(AbstractUser):
         ("assistant_doctor", "Assistant Doctor"),
         ("receptionist", "Receptionist"),
         ("assistant", "Assistant"),
+        ("trainee", "Trainee"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, default="receptionist", db_index=True)
     chambers = models.ManyToManyField(ChamberModel, blank=True, related_name="staff")
+    supervisor = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assistant_doctors",
+        limit_choices_to={"role": "doctor"},
+    )
 
     class Meta:
         app_label = "infrastructure"

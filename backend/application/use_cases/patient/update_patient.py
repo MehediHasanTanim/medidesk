@@ -30,6 +30,10 @@ class UpdatePatientUseCase:
                 patient.date_of_birth = (
                     datetime.strptime(dto.date_of_birth, "%Y-%m-%d").date()
                 )
+                # DOB is now set — discard the manual fallback
+                patient.age_years = None
+            if dto.age_years is not None and not patient.date_of_birth:
+                patient.age_years = dto.age_years
             if dto.email is not None:
                 patient.email = dto.email
             if dto.national_id is not None:

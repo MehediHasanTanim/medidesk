@@ -64,6 +64,12 @@ export const testOrdersApi = {
     apiClient
       .get<TestOrder[]>("/test-orders/pending/")
       .then((r) => r.data),
+
+  /** Test orders placed by the calling assistant doctor. */
+  listMine: () =>
+    apiClient
+      .get<TestOrder[]>("/test-orders/mine/")
+      .then((r) => r.data),
 };
 
 // ── Common test presets (Bangladesh clinical context) ─────────────────────────

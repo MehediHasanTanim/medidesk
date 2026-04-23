@@ -1,6 +1,24 @@
 from rest_framework import serializers
 
 
+# ── Chamber Schedule ──────────────────────────────────────────────────────────
+
+class ChamberScheduleSerializer(serializers.Serializer):
+    chamber_id = serializers.UUIDField()
+    visit_days = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+        help_text='e.g. ["Sat", "Sun", "Mon"]',
+    )
+    visit_time_start = serializers.TimeField(
+        format="%H:%M", input_formats=["%H:%M"], required=False, allow_null=True
+    )
+    visit_time_end = serializers.TimeField(
+        format="%H:%M", input_formats=["%H:%M"], required=False, allow_null=True
+    )
+
+
 # ── Speciality ────────────────────────────────────────────────────────────────
 
 class SpecialityResponseSerializer(serializers.Serializer):
@@ -32,9 +50,9 @@ class DoctorProfileResponseSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.CharField()
     is_active = serializers.BooleanField()
-    speciality_id = serializers.UUIDField()
-    speciality_name = serializers.CharField()
-    qualifications = serializers.CharField()
+    speciality_id = serializers.CharField(allow_blank=True, allow_null=True)
+    speciality_name = serializers.CharField(allow_blank=True, allow_null=True)
+    qualifications = serializers.CharField(allow_blank=True, allow_null=True)
     bio = serializers.CharField()
     consultation_fee = serializers.FloatField(allow_null=True)
     experience_years = serializers.IntegerField(allow_null=True)
@@ -43,14 +61,17 @@ class DoctorProfileResponseSerializer(serializers.Serializer):
     visit_time_start = serializers.CharField(allow_null=True)
     visit_time_end = serializers.CharField(allow_null=True)
     chamber_ids = serializers.ListField(child=serializers.UUIDField())
+    supervisor_doctor_id = serializers.UUIDField(allow_null=True, required=False)
+    profile_complete = serializers.BooleanField(default=True)
+    chamber_schedules = ChamberScheduleSerializer(many=True, default=list)
 
 
 class CreateDoctorProfileSerializer(serializers.Serializer):
-    # User fields
-    username = serializers.CharField(max_length=150)
-    password = serializers.CharField(min_length=8, write_only=True)
-    full_name = serializers.CharField(max_length=255)
-    email = serializers.EmailField()
+    # User fields (required only when existing_user_id is absent)
+    username = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    password = serializers.CharField(min_length=0, required=False, allow_blank=True, default="", write_only=True)
+    full_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    email = serializers.EmailField(required=False, allow_blank=True, default="")
     role = serializers.ChoiceField(
         choices=["doctor", "assistant_doctor"],
         default="doctor",
@@ -82,6 +103,27 @@ class CreateDoctorProfileSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    supervisor_doctor_id = serializers.UUIDField(required=False, allow_null=True)
+    existing_user_id = serializers.UUIDField(required=False, allow_null=True)
+    chamber_schedules = ChamberScheduleSerializer(many=True, required=False, default=list)
+
+    def validate(self, data):
+        if not data.get("existing_user_id"):
+            errors = {}
+            if not data.get("username", "").strip():
+                errors["username"] = "This field is required."
+            if not data.get("full_name", "").strip():
+                errors["full_name"] = "This field is required."
+            if not data.get("email", "").strip():
+                errors["email"] = "This field is required."
+            password = data.get("password", "")
+            if not password:
+                errors["password"] = "This field is required."
+            elif len(password) < 8:
+                errors["password"] = "Ensure this field has at least 8 characters."
+            if errors:
+                raise serializers.ValidationError(errors)
+        return data
 
 
 class UpdateDoctorProfileSerializer(serializers.Serializer):
@@ -111,3 +153,5 @@ class UpdateDoctorProfileSerializer(serializers.Serializer):
     chamber_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False
     )
+    supervisor_doctor_id = serializers.UUIDField(required=False, allow_null=True)
+    chamber_schedules = ChamberScheduleSerializer(many=True, required=False)

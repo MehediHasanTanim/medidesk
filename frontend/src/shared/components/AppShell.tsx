@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/features/auth/store/authStore";
+import queryClient from "@/shared/lib/queryClient";
 import { colors, font } from "@/shared/styles/theme";
 import { ROLE_LABELS, ROLE_COLORS } from "@/shared/types/auth";
 import type { UserRole } from "@/shared/types/auth";
@@ -13,12 +14,13 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { path: "/",             label: "Dashboard",    icon: "⊞" },
-  { path: "/patients",     label: "Patients",     icon: "👤", roles: ["doctor", "assistant_doctor", "receptionist", "assistant"] },
-  { path: "/appointments", label: "Appointments", icon: "📅", roles: ["doctor", "assistant_doctor", "receptionist", "assistant"] },
-  { path: "/queue",        label: "Live Queue",   icon: "🔢", roles: ["doctor", "assistant_doctor", "receptionist", "assistant"] },
+  { path: "/patients",     label: "Patients",     icon: "👤", roles: ["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"] },
+  { path: "/appointments", label: "Appointments", icon: "📅", roles: ["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"] },
+  { path: "/queue",        label: "Live Queue",   icon: "🔢", roles: ["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"] },
   { path: "/billing",      label: "Billing",      icon: "💳", roles: ["receptionist", "assistant"] },
-  { path: "/prescriptions", label: "Rx Approvals", icon: "💊", roles: ["doctor"] },
-  { path: "/medicines",    label: "Medicines",    icon: "🧪", roles: ["doctor", "assistant_doctor", "super_admin", "admin"] },
+  { path: "/prescriptions", label: "Rx Approvals", icon: "💊", roles: ["doctor", "assistant_doctor"] },
+  { path: "/test-orders",  label: "Lab Approvals", icon: "🧫", roles: ["doctor"] },
+  { path: "/medicines",    label: "Medicines",    icon: "🧪", roles: ["doctor", "assistant_doctor", "trainee", "super_admin", "admin"] },
   { path: "/users",        label: "Users",        icon: "👥", roles: ["super_admin", "admin"] },
   { path: "/chambers",     label: "Chambers",     icon: "🏥", roles: ["super_admin", "admin"] },
   { path: "/doctors",      label: "Doctors",      icon: "👨‍⚕️", roles: ["super_admin", "admin"] },
@@ -36,6 +38,7 @@ export default function AppShell({ children }: Props) {
   const handleLogout = async () => {
     const refresh = localStorage.getItem("refresh_token");
     logout();
+    queryClient.clear();
     navigate("/login", { replace: true });
     if (refresh) {
       import("@/shared/lib/apiClient").then(({ default: api }) => {

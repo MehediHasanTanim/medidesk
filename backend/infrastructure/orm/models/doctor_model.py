@@ -61,3 +61,34 @@ class DoctorProfileModel(models.Model):
 
     def __str__(self) -> str:
         return f"Dr. {self.user.full_name} — {self.speciality.name}"
+
+
+class DoctorChamberScheduleModel(models.Model):
+    """Stores a doctor's visit schedule for a specific chamber."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    doctor_profile = models.ForeignKey(
+        DoctorProfileModel,
+        on_delete=models.CASCADE,
+        related_name="chamber_schedules",
+    )
+    chamber = models.ForeignKey(
+        "infrastructure.ChamberModel",
+        on_delete=models.CASCADE,
+        related_name="doctor_schedules",
+    )
+    visit_days = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='e.g. ["Sat", "Sun", "Mon"]',
+    )
+    visit_time_start = models.TimeField(null=True, blank=True)
+    visit_time_end = models.TimeField(null=True, blank=True)
+
+    class Meta:
+        app_label = "infrastructure"
+        db_table = "doctor_chamber_schedules"
+        unique_together = [("doctor_profile", "chamber")]
+
+    def __str__(self) -> str:
+        return f"{self.doctor_profile_id} @ chamber {self.chamber_id}"

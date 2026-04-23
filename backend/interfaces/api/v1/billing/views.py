@@ -12,6 +12,7 @@ from application.use_cases.billing.cancel_invoice import CancelInvoiceUseCase
 from application.use_cases.billing.create_invoice import CreateInvoiceUseCase
 from application.use_cases.billing.record_payment import RecordPaymentUseCase
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
+from interfaces.permissions import ADMIN_ROLES, ModulePermission
 from interfaces.api.v1.billing.serializers import (
     CreateInvoiceResponseSerializer,
     CreateInvoiceSerializer,
@@ -24,9 +25,6 @@ from interfaces.api.v1.billing.serializers import (
 
 
 # ── Views ─────────────────────────────────────────────────────────────────────
-
-BILLING_STAFF_ROLES = {"receptionist", "assistant", "admin", "super_admin"}
-
 
 def _invoice_summary(inv) -> dict:
     return {
@@ -45,9 +43,12 @@ def _invoice_summary(inv) -> dict:
 
 @extend_schema(tags=["billing"])
 class InvoiceView(APIView):
-    # GET is open to all authenticated users so any role can check billing status on
-    # a consultation. POST is restricted to billing staff (checked inline).
-    permission_classes = [IsAuthenticated]
+    # ModulePermission("billing") handles the outer gate:
+    #   GET  → billing.view  (doctor, receptionist, assistant)
+    #   POST → billing.create (receptionist, assistant only)
+    # For GET ?consultation_id any billing.view role may proceed;
+    # the ?patient_id branch additionally checks for billing-staff roles inline.
+    permission_classes = [IsAuthenticated, ModulePermission("billing")]
 
     @extend_schema(
         summary="List invoices",
@@ -82,7 +83,7 @@ class InvoiceView(APIView):
 
         # ── By patient — billing staff only ──────────────────────────────────
         role = getattr(request.user, "role", "")
-        if role not in BILLING_STAFF_ROLES:
+        if role not in {"receptionist", "assistant"} | ADMIN_ROLES:
             return Response(
                 {"error": "Only billing staff can list invoices by patient"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -110,13 +111,8 @@ class InvoiceView(APIView):
         responses={201: CreateInvoiceResponseSerializer},
     )
     def post(self, request: Request) -> Response:
-        role = getattr(request.user, "role", "")
-        if role not in BILLING_STAFF_ROLES:
-            return Response(
-                {"error": "Only billing staff can create invoices"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
+        # Class-level ModulePermission("billing") already enforces billing.create
+        # (receptionist/assistant/admin only) before this method runs.
         serializer = CreateInvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -147,7 +143,7 @@ class InvoiceView(APIView):
 
 @extend_schema(tags=["billing"])
 class InvoiceDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("billing")]
 
     @extend_schema(
         summary="Get invoice details",
@@ -196,15 +192,6 @@ class InvoiceDetailView(APIView):
         responses={200: InvoiceSummarySerializer},
     )
     def patch(self, request: Request, invoice_id: uuid.UUID) -> Response:
-        # Only receptionists and admins may cancel invoices
-        role = getattr(request.user, "role", "")
-        ADMIN_ROLES = {"admin", "super_admin"}
-        if role not in ({"receptionist", "assistant"} | ADMIN_ROLES):
-            return Response(
-                {"error": "Only receptionists and assistants can update invoices"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         serializer = UpdateInvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -225,7 +212,7 @@ class InvoiceDetailView(APIView):
 
 @extend_schema(tags=["billing"])
 class PaymentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("billing")]
 
     @extend_schema(
         summary="Record a payment",
@@ -239,13 +226,6 @@ class PaymentView(APIView):
         responses={201: RecordPaymentResponseSerializer},
     )
     def post(self, request: Request) -> Response:
-        role = getattr(request.user, "role", "")
-        if role not in BILLING_STAFF_ROLES:
-            return Response(
-                {"error": "Only billing staff can record payments"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         serializer = RecordPaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

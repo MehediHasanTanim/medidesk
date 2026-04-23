@@ -27,7 +27,7 @@ from interfaces.api.v1.medicines.serializers import (
     UpdateGenericMedicineSerializer,
     UpdateManufacturerSerializer,
 )
-from interfaces.permissions import RolePermission
+from interfaces.permissions import ModulePermission
 
 
 # ── Manufacturer helpers ──────────────────────────────────────────────────────
@@ -84,9 +84,9 @@ def _brand_to_dict(b: BrandMedicine) -> Dict[str, Any]:
 class GenericMedicineListView(APIView):
     """
     GET  /medicines/generics/  — list with optional search/filter
-    POST /medicines/generics/  — create a new generic medicine (doctor/admin)
+    POST /medicines/generics/  — create a new generic medicine (doctor/assistant_doctor/admin)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
         summary="List generic medicines",
@@ -123,9 +123,6 @@ class GenericMedicineListView(APIView):
         responses={201: GenericMedicineSerializer},
     )
     def post(self, request: Request) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
-        self.check_permissions(request)
-
         serializer = CreateGenericMedicineSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -164,10 +161,10 @@ class GenericMedicineListView(APIView):
 class GenericMedicineDetailView(APIView):
     """
     GET    /medicines/generics/<id>/  — get generic detail with brand list
-    PATCH  /medicines/generics/<id>/  — update generic (doctor/admin)
+    PATCH  /medicines/generics/<id>/  — update generic (doctor/assistant_doctor/admin)
     DELETE /medicines/generics/<id>/  — delete generic if no brands (admin only)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
         summary="Get generic medicine",
@@ -187,9 +184,6 @@ class GenericMedicineDetailView(APIView):
         responses={200: GenericMedicineSerializer},
     )
     def patch(self, request: Request, generic_id: uuid.UUID) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
-        self.check_permissions(request)
-
         repo = DjangoMedicineRepository()
         generic = repo.get_generic_by_id(generic_id)
         if not generic:
@@ -237,9 +231,7 @@ class GenericMedicineDetailView(APIView):
         responses={204: None},
     )
     def delete(self, request: Request, generic_id: uuid.UUID) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission([])]  # admin only (RolePermission with empty list still passes admin)
-        self.check_permissions(request)
-
+        # No role has medicines.delete in ROLE_PERMISSIONS → admin-only via ModulePermission.
         repo = DjangoMedicineRepository()
         generic = repo.get_generic_by_id(generic_id)
         if not generic:
@@ -262,9 +254,9 @@ class GenericMedicineDetailView(APIView):
 class BrandMedicineListView(APIView):
     """
     GET  /medicines/brands/  — list brands with optional filters
-    POST /medicines/brands/  — add a brand (doctor/admin)
+    POST /medicines/brands/  — add a brand (doctor/assistant_doctor/admin)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
         summary="List brand medicines",
@@ -309,9 +301,6 @@ class BrandMedicineListView(APIView):
         responses={201: BrandMedicineSerializer},
     )
     def post(self, request: Request) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
-        self.check_permissions(request)
-
         serializer = CreateBrandMedicineSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -341,10 +330,10 @@ class BrandMedicineListView(APIView):
 class BrandMedicineDetailView(APIView):
     """
     GET    /medicines/brands/<id>/  — get brand detail
-    PATCH  /medicines/brands/<id>/  — update brand (doctor/admin)
+    PATCH  /medicines/brands/<id>/  — update brand (doctor/assistant_doctor/admin)
     DELETE /medicines/brands/<id>/  — deactivate brand (admin only)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
         summary="Get brand medicine",
@@ -363,9 +352,6 @@ class BrandMedicineDetailView(APIView):
         responses={200: BrandMedicineSerializer},
     )
     def patch(self, request: Request, brand_id: uuid.UUID) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
-        self.check_permissions(request)
-
         repo = DjangoMedicineRepository()
         brand = repo.get_brand_by_id(brand_id)
         if not brand:
@@ -400,9 +386,7 @@ class BrandMedicineDetailView(APIView):
         responses={200: BrandMedicineSerializer},
     )
     def delete(self, request: Request, brand_id: uuid.UUID) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission([])]  # admin only
-        self.check_permissions(request)
-
+        # No role has medicines.delete → admin-only via ModulePermission.
         repo = DjangoMedicineRepository()
         brand = repo.get_brand_by_id(brand_id)
         if not brand:
@@ -420,7 +404,7 @@ class MedicineSearchView(APIView):
     """
     GET /medicines/search/?q=  — typeahead search for prescription autocomplete
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
         summary="Search medicines (autocomplete)",
@@ -460,9 +444,9 @@ class MedicineSearchView(APIView):
 class ManufacturerListView(APIView):
     """
     GET  /medicines/manufacturers/  — list manufacturers (active by default)
-    POST /medicines/manufacturers/  — create manufacturer (doctor/admin)
+    POST /medicines/manufacturers/  — create manufacturer (doctor/assistant_doctor/admin)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
         summary="List manufacturers",
@@ -498,9 +482,6 @@ class ManufacturerListView(APIView):
         responses={201: ManufacturerSerializer},
     )
     def post(self, request: Request) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
-        self.check_permissions(request)
-
         serializer = CreateManufacturerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -522,10 +503,10 @@ class ManufacturerListView(APIView):
 class ManufacturerDetailView(APIView):
     """
     GET    /medicines/manufacturers/<id>/  — detail
-    PATCH  /medicines/manufacturers/<id>/  — update (doctor/admin)
+    PATCH  /medicines/manufacturers/<id>/  — update (doctor/assistant_doctor/admin)
     DELETE /medicines/manufacturers/<id>/  — deactivate (admin only)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(summary="Get manufacturer", responses={200: ManufacturerSerializer})
     def get(self, request: Request, manufacturer_id: uuid.UUID) -> Response:
@@ -541,9 +522,6 @@ class ManufacturerDetailView(APIView):
         responses={200: ManufacturerSerializer},
     )
     def patch(self, request: Request, manufacturer_id: uuid.UUID) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission(["doctor"])]
-        self.check_permissions(request)
-
         try:
             m = ManufacturerModel.objects.get(id=manufacturer_id)
         except ManufacturerModel.DoesNotExist:
@@ -572,9 +550,7 @@ class ManufacturerDetailView(APIView):
         responses={200: ManufacturerSerializer},
     )
     def delete(self, request: Request, manufacturer_id: uuid.UUID) -> Response:
-        self.permission_classes = [IsAuthenticated, RolePermission([])]  # admin only
-        self.check_permissions(request)
-
+        # No role has medicines.delete → admin-only via ModulePermission.
         try:
             m = ManufacturerModel.objects.get(id=manufacturer_id)
         except ManufacturerModel.DoesNotExist:

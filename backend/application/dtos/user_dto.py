@@ -11,6 +11,7 @@ class CreateUserDTO:
     role: str
     password: str
     chamber_ids: List[str] = field(default_factory=list)
+    supervisor_doctor_id: Optional[str] = None
 
 
 @dataclass
@@ -21,6 +22,7 @@ class UpdateUserDTO:
     role: Optional[str] = None
     is_active: Optional[bool] = None
     chamber_ids: Optional[List[str]] = None
+    supervisor_doctor_id: Optional[str] = None
 
 
 @dataclass
@@ -39,6 +41,7 @@ class UserResponseDTO:
     role: str
     chamber_ids: List[str]
     is_active: bool
+    supervisor_doctor_id: Optional[str] = None
 
 
 @dataclass
