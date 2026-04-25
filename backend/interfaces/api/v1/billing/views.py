@@ -1,6 +1,12 @@
 import uuid
+from datetime import date
 
-from drf_spectacular.utils import extend_schema
+from django.db.models import Case, DecimalField, Sum, Value, When
+from django.db.models.functions import TruncDate
+from django.http import HttpResponse
+from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -11,6 +17,7 @@ from application.dtos.billing_dto import CreateInvoiceDTO, InvoiceItemDTO, Recor
 from application.use_cases.billing.cancel_invoice import CancelInvoiceUseCase
 from application.use_cases.billing.create_invoice import CreateInvoiceUseCase
 from application.use_cases.billing.record_payment import RecordPaymentUseCase
+from infrastructure.orm.models.billing_model import InvoiceModel, PaymentModel
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from infrastructure.services.audit_service import get_audit_service
 from interfaces.api.v1.mixins import AuditMixin, _get_client_ip
@@ -255,3 +262,133 @@ class PaymentView(AuditMixin, APIView):
             return Response(result, status=status.HTTP_201_CREATED)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(tags=["billing"])
+class InvoicePDFView(APIView):
+    """GET /invoices/<id>/pdf/ — render invoice as a PDF via WeasyPrint."""
+    permission_classes = [IsAuthenticated, ModulePermission("billing")]
+
+    @extend_schema(
+        summary="Download invoice as PDF",
+        description=(
+            "Renders the invoice using WeasyPrint and returns it as an inline PDF. "
+            "Pass `?download=1` to force a file-download prompt."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "download", OpenApiTypes.INT, OpenApiParameter.QUERY,
+                description="Set to 1 to force browser download instead of inline view.",
+                required=False,
+            )
+        ],
+        responses={200: OpenApiTypes.BINARY},
+    )
+    def get(self, request: Request, invoice_id: uuid.UUID) -> HttpResponse:
+        from application.use_cases.billing.generate_pdf import GenerateInvoicePDFUseCase
+        try:
+            pdf_bytes = GenerateInvoicePDFUseCase().execute(invoice_id)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        disposition = "attachment" if request.query_params.get("download") == "1" else "inline"
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'{disposition}; filename="invoice-{str(invoice_id)[:8]}.pdf"'
+        response["Content-Length"] = len(pdf_bytes)
+        return response
+
+
+@extend_schema(tags=["billing"])
+class IncomeReportView(APIView):
+    """GET /income-report/ — daily income breakdown with payment method split."""
+    permission_classes = [IsAuthenticated, ModulePermission("billing")]
+
+    @extend_schema(
+        summary="Income report",
+        description=(
+            "Returns total collected and per-method breakdown for a date range. "
+            "Defaults to today when both params are omitted. "
+            "Maximum range is 90 days. Accessible to billing staff and admins."
+        ),
+        parameters=[
+            OpenApiParameter("from_date", OpenApiTypes.DATE, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("to_date",   OpenApiTypes.DATE, OpenApiParameter.QUERY, required=False),
+        ],
+    )
+    def get(self, request: Request) -> Response:
+        today = timezone.localdate()
+        from_str = request.query_params.get("from_date")
+        to_str   = request.query_params.get("to_date")
+
+        try:
+            from_date = date.fromisoformat(from_str) if from_str else today
+            to_date   = date.fromisoformat(to_str)   if to_str   else today
+        except ValueError:
+            return Response({"error": "Invalid date format — use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if from_date > to_date:
+            return Response({"error": "from_date cannot be after to_date"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if (to_date - from_date).days > 90:
+            return Response({"error": "Date range cannot exceed 90 days"}, status=status.HTTP_400_BAD_REQUEST)
+
+        _dec = DecimalField()
+        _zero = Value(0)
+
+        qs = PaymentModel.objects.filter(paid_at__date__gte=from_date, paid_at__date__lte=to_date)
+
+        totals = qs.aggregate(
+            total=Sum("amount"),
+            cash  =Sum(Case(When(method="cash",  then="amount"), default=_zero, output_field=_dec)),
+            bkash =Sum(Case(When(method="bkash", then="amount"), default=_zero, output_field=_dec)),
+            nagad =Sum(Case(When(method="nagad", then="amount"), default=_zero, output_field=_dec)),
+            card  =Sum(Case(When(method="card",  then="amount"), default=_zero, output_field=_dec)),
+        )
+
+        daily_qs = (
+            qs
+            .annotate(day=TruncDate("paid_at"))
+            .values("day")
+            .annotate(
+                total=Sum("amount"),
+                cash  =Sum(Case(When(method="cash",  then="amount"), default=_zero, output_field=_dec)),
+                bkash =Sum(Case(When(method="bkash", then="amount"), default=_zero, output_field=_dec)),
+                nagad =Sum(Case(When(method="nagad", then="amount"), default=_zero, output_field=_dec)),
+                card  =Sum(Case(When(method="card",  then="amount"), default=_zero, output_field=_dec)),
+            )
+            .order_by("day")
+        )
+
+        inv_qs = InvoiceModel.objects.filter(
+            created_at__date__gte=from_date, created_at__date__lte=to_date
+        )
+
+        def _f(v):
+            return float(v or 0)
+
+        return Response({
+            "from_date": str(from_date),
+            "to_date":   str(to_date),
+            "total_collected": _f(totals["total"]),
+            "by_method": {
+                "cash":  _f(totals["cash"]),
+                "bkash": _f(totals["bkash"]),
+                "nagad": _f(totals["nagad"]),
+                "card":  _f(totals["card"]),
+            },
+            "total_invoices": inv_qs.count(),
+            "paid_invoices":  inv_qs.filter(status="paid").count(),
+            "daily_breakdown": [
+                {
+                    "date":  str(row["day"]),
+                    "total": _f(row["total"]),
+                    "cash":  _f(row["cash"]),
+                    "bkash": _f(row["bkash"]),
+                    "nagad": _f(row["nagad"]),
+                    "card":  _f(row["card"]),
+                }
+                for row in daily_qs
+            ],
+        })

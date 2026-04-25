@@ -73,6 +73,32 @@ export interface RecordPaymentResponse {
   balance_remaining: string;
 }
 
+export interface IncomeByMethod {
+  cash: number;
+  bkash: number;
+  nagad: number;
+  card: number;
+}
+
+export interface DailyIncomeRow {
+  date: string;
+  total: number;
+  cash: number;
+  bkash: number;
+  nagad: number;
+  card: number;
+}
+
+export interface IncomeReport {
+  from_date: string;
+  to_date: string;
+  total_collected: number;
+  by_method: IncomeByMethod;
+  total_invoices: number;
+  paid_invoices: number;
+  daily_breakdown: DailyIncomeRow[];
+}
+
 export const billingApi = {
   listByPatient: (patientId: string) =>
     apiClient
@@ -105,5 +131,31 @@ export const billingApi = {
         `/invoices/${invoiceId}/`,
         { status: "cancelled" }
       )
+      .then((r) => r.data),
+
+  /** Opens the invoice PDF in a new tab (inline) or triggers download. */
+  openPDF: (invoiceId: string, download = false) => {
+    const token = localStorage.getItem("access_token");
+    const url = `${apiClient.defaults.baseURL}/invoices/${invoiceId}/pdf/${download ? "?download=1" : ""}`;
+    // Fetch as blob so we can pass the JWT header
+    return fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to generate PDF");
+        return res.blob();
+      })
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        if (download) a.download = `invoice-${invoiceId.slice(0, 8)}.pdf`;
+        else a.target = "_blank";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      });
+  },
+
+  getIncomeReport: (fromDate: string, toDate: string) =>
+    apiClient
+      .get<IncomeReport>("/income-report/", { params: { from_date: fromDate, to_date: toDate } })
       .then((r) => r.data),
 };

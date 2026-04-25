@@ -241,6 +241,7 @@ function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; pat
   const navigate = useNavigate();
   const [showPayment, setShowPayment] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState<"view" | "download" | null>(null);
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ["invoice", invoiceId],
@@ -296,6 +297,26 @@ function InvoicePanel({ invoiceId, patientId, onBack }: { invoiceId: string; pat
                 View Consultation →
               </button>
             )}
+            <button
+              onClick={() => {
+                setPdfLoading("view");
+                billingApi.openPDF(invoiceId, false).finally(() => setPdfLoading(null));
+              }}
+              disabled={pdfLoading !== null}
+              style={{ padding: "6px 14px", background: colors.white, color: "#6b7280", border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+            >
+              {pdfLoading === "view" ? "Opening…" : "🖨 Print / View PDF"}
+            </button>
+            <button
+              onClick={() => {
+                setPdfLoading("download");
+                billingApi.openPDF(invoiceId, true).finally(() => setPdfLoading(null));
+              }}
+              disabled={pdfLoading !== null}
+              style={{ padding: "6px 14px", background: colors.white, color: "#6b7280", border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.sm, fontWeight: 500 }}
+            >
+              {pdfLoading === "download" ? "Downloading…" : "⬇ Download PDF"}
+            </button>
             {canPay && (
               <button onClick={() => setShowPayment(true)}
                 style={{ padding: "8px 18px", background: colors.success, color: colors.white, border: "none", borderRadius: radius.md, fontWeight: 600, cursor: "pointer", fontSize: font.base }}>

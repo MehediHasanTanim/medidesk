@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 10pt;
+    color: #1a1a2e;
+    line-height: 1.45;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  .header {
+    border-bottom: 3px solid #1d4ed8;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .clinic-name {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #1d4ed8;
+    letter-spacing: -0.5px;
+  }
+
+  .invoice-block { text-align: right; }
+
+  .invoice-number {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+
+  .invoice-meta {
+    font-size: 8.5pt;
+    color: #555;
+    margin-top: 2px;
+  }
+
+  /* ── Status badge ──────────────────────────────────────────── */
+  .status-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+  }
+  .status-paid     { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+  .status-issued   { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+  .status-partial  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+  .status-draft    { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+  .status-cancelled{ background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+  /* ── Patient strip ──────────────────────────────────────────── */
+  .patient-strip {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 18px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .patient-strip .field { flex: 1; min-width: 120px; }
+
+  .field-label {
+    font-size: 7.5pt;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+
+  .field-value {
+    font-size: 9.5pt;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin-top: 1px;
+  }
+
+  /* ── Section title ──────────────────────────────────────────── */
+  .section-title {
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  /* ── Items table ─────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+  }
+
+  thead th {
+    background: #1d4ed8;
+    color: #fff;
+    font-size: 8pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 6px 10px;
+    text-align: left;
+  }
+
+  thead th.right { text-align: right; }
+
+  tbody tr:nth-child(even) { background: #f8fafc; }
+
+  tbody td {
+    padding: 7px 10px;
+    font-size: 9.5pt;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+
+  tbody td.right { text-align: right; }
+  tbody td.mono  { font-family: "DejaVu Sans Mono", monospace; }
+
+  /* ── Totals block ────────────────────────────────────────────── */
+  .totals {
+    width: 240px;
+    margin-left: auto;
+    margin-bottom: 18px;
+  }
+
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5pt;
+    padding: 4px 0;
+    color: #4b5563;
+  }
+
+  .totals-row.discount { color: #b45309; }
+
+  .totals-row.total {
+    border-top: 2px solid #1a1a2e;
+    padding-top: 7px;
+    margin-top: 3px;
+    font-size: 11pt;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+
+  /* ── Payments table ──────────────────────────────────────────── */
+  .payments-section { margin-bottom: 18px; }
+
+  .payment-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 9pt;
+  }
+
+  .payment-row:last-child { border-bottom: none; }
+
+  .payment-method { font-weight: 600; color: #1a1a2e; }
+  .payment-ref    { font-size: 8pt; color: #6b7280; margin-top: 1px; }
+  .payment-amount { font-weight: 700; color: #059669; font-size: 9.5pt; }
+
+  /* ── Balance box ─────────────────────────────────────────────── */
+  .balance-box {
+    border: 1.5px solid #1d4ed8;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #eff6ff;
+  }
+
+  .balance-label { font-size: 9.5pt; font-weight: 600; color: #1e40af; }
+  .balance-zero  { color: #059669; }
+  .balance-amount{ font-size: 12pt; font-weight: 700; color: #1d4ed8; }
+  .balance-zero-amount { color: #059669; }
+
+  /* ── Footer ─────────────────────────────────────────────────── */
+  .footer {
+    margin-top: 24px;
+    padding-top: 10px;
+    border-top: 1px solid #d1d5db;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 8pt;
+    color: #9ca3af;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<div class="header">
+  <div>
+    <div class="clinic-name">MediDesk</div>
+    <div style="font-size:8pt; color:#6b7280; margin-top:2px;">Clinic Management System</div>
+  </div>
+  <div class="invoice-block">
+    <div class="invoice-number">{{ invoice_number }}</div>
+    <div class="invoice-meta">Date: {{ invoice_date }}</div>
+    <div>
+      {% if status == "paid" %}
+        <span class="status-badge status-paid">Paid</span>
+      {% elif status == "issued" %}
+        <span class="status-badge status-issued">Issued</span>
+      {% elif status == "partially_paid" %}
+        <span class="status-badge status-partial">Partially Paid</span>
+      {% elif status == "cancelled" %}
+        <span class="status-badge status-cancelled">Cancelled</span>
+      {% else %}
+        <span class="status-badge status-draft">Draft</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Patient strip ─────────────────────────────────── -->
+<div class="patient-strip">
+  <div class="field">
+    <div class="field-label">Patient</div>
+    <div class="field-value">{{ patient_name }}</div>
+  </div>
+  <div class="field">
+    <div class="field-label">Phone</div>
+    <div class="field-value">{{ patient_phone }}</div>
+  </div>
+  <div class="field">
+    <div class="field-label">Patient ID</div>
+    <div class="field-value" style="font-size:8.5pt; color:#6b7280;">{{ patient_id_display }}</div>
+  </div>
+  <div class="field">
+    <div class="field-label">Invoice Date</div>
+    <div class="field-value">{{ invoice_date }}</div>
+  </div>
+</div>
+
+<!-- ── Items ──────────────────────────────────────────── -->
+<div class="section-title">Items</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:5%">#</th>
+      <th style="width:50%">Description</th>
+      <th class="right" style="width:13%">Qty</th>
+      <th class="right" style="width:16%">Unit Price</th>
+      <th class="right" style="width:16%">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td style="color:#9ca3af">{{ forloop.counter }}</td>
+      <td>{{ item.description }}</td>
+      <td class="right">{{ item.quantity }}</td>
+      <td class="right mono">৳{{ item.unit_price }}</td>
+      <td class="right mono">৳{{ item.total }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ── Totals ─────────────────────────────────────────── -->
+<div class="totals">
+  <div class="totals-row">
+    <span>Subtotal</span>
+    <span>৳{{ subtotal }}</span>
+  </div>
+  {% if discount_percent > 0 %}
+  <div class="totals-row discount">
+    <span>Discount ({{ discount_percent }}%)</span>
+    <span>−৳{{ discount_amt }}</span>
+  </div>
+  {% endif %}
+  <div class="totals-row total">
+    <span>Total Due</span>
+    <span>৳{{ total_due }}</span>
+  </div>
+</div>
+
+<!-- ── Payments ───────────────────────────────────────── -->
+{% if payments %}
+<div class="payments-section">
+  <div class="section-title">Payments Received</div>
+  <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+    {% for p in payments %}
+    <div class="payment-row">
+      <div>
+        <div class="payment-method">{{ p.method }}</div>
+        {% if p.transaction_ref %}
+        <div class="payment-ref">Ref: {{ p.transaction_ref }}</div>
+        {% endif %}
+        <div class="payment-ref">{{ p.paid_at }}</div>
+      </div>
+      <div class="payment-amount">৳{{ p.amount }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── Balance ────────────────────────────────────────── -->
+<div class="balance-box {% if balance_remaining == '0.00' %}balance-zero{% endif %}">
+  <div class="balance-label {% if balance_remaining == '0.00' %}balance-zero{% endif %}">
+    {% if balance_remaining == '0.00' %}Fully Paid{% else %}Balance Remaining{% endif %}
+  </div>
+  <div class="balance-amount {% if balance_remaining == '0.00' %}balance-zero-amount{% endif %}">
+    ৳{{ balance_remaining }}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Footer ────────────────────────────────────────── -->
+<div class="footer">
+  <div>Generated by MediDesk &nbsp;·&nbsp; {{ generated_at }}</div>
+  <div>{{ invoice_number }}</div>
+</div>
+
+</body>
+</html>

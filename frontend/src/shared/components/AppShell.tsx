@@ -18,6 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/appointments", label: "Appointments", icon: "📅", roles: ["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"] },
   { path: "/queue",        label: "Live Queue",   icon: "🔢", roles: ["doctor", "assistant_doctor", "receptionist", "assistant", "trainee"] },
   { path: "/billing",      label: "Billing",      icon: "💳", roles: ["receptionist", "assistant"] },
+  { path: "/income",       label: "Income Report",icon: "📊", roles: ["receptionist", "admin", "super_admin"] },
   { path: "/prescriptions", label: "Rx Approvals", icon: "💊", roles: ["doctor", "assistant_doctor"] },
   { path: "/test-orders",  label: "Lab Approvals", icon: "🧫", roles: ["doctor"] },
   { path: "/medicines",    label: "Medicines",    icon: "🧪", roles: ["doctor", "assistant_doctor", "trainee", "super_admin", "admin"] },

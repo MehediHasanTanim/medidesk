@@ -11,6 +11,7 @@ import QueuePage from "@/features/appointments/pages/QueuePage";
 import UsersPage from "@/features/users/pages/UsersPage";
 import ChambersPage from "@/features/chambers/pages/ChambersPage";
 import BillingPage from "@/features/billing/pages/BillingPage";
+import IncomePage from "@/features/billing/pages/IncomePage";
 import PatientHistoryPage from "@/features/patients/pages/PatientHistoryPage";
 import PrescriptionsPage from "@/features/prescriptions/pages/PrescriptionsPage";
 import DoctorsPage from "@/features/doctors/pages/DoctorsPage";
@@ -92,6 +93,16 @@ export default function App() {
             <PrivateRoute>
               <RoleGuard roles={["receptionist", "assistant", "admin", "super_admin"]}>
                 <BillingPage />
+              </RoleGuard>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/income"
+          element={
+            <PrivateRoute>
+              <RoleGuard roles={["receptionist", "admin", "super_admin"]}>
+                <IncomePage />
               </RoleGuard>
             </PrivateRoute>
           }
