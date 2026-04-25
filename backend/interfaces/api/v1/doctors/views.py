@@ -23,12 +23,14 @@ from interfaces.api.v1.doctors.serializers import (
     UpdateDoctorProfileSerializer,
     UpdateSpecialitySerializer,
 )
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.permissions import AdminOnly
 
 
 # ── Specialities ──────────────────────────────────────────────────────────────
 
-class SpecialityListView(APIView):
+class SpecialityListView(AuditMixin, APIView):
+    audit_resource_type = "speciality"
 
     @extend_schema(
         tags=["doctors"],
@@ -71,7 +73,8 @@ class SpecialityListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class SpecialityDetailView(APIView):
+class SpecialityDetailView(AuditMixin, APIView):
+    audit_resource_type = "speciality"
     permission_classes = [IsAuthenticated, AdminOnly]
 
     @extend_schema(
@@ -114,7 +117,8 @@ class SpecialityDetailView(APIView):
 
 # ── Doctor Profiles ───────────────────────────────────────────────────────────
 
-class DoctorProfileListView(APIView):
+class DoctorProfileListView(AuditMixin, APIView):
+    audit_resource_type = "doctor_profile"
 
     @extend_schema(
         tags=["doctors"],
@@ -271,7 +275,8 @@ class DoctorProfileListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class DoctorProfileDetailView(APIView):
+class DoctorProfileDetailView(AuditMixin, APIView):
+    audit_resource_type = "doctor_profile"
 
     @extend_schema(
         tags=["doctors"],

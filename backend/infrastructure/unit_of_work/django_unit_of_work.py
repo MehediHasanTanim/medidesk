@@ -8,6 +8,7 @@ from infrastructure.repositories.django_consultation_repository import DjangoCon
 from infrastructure.repositories.django_medicine_repository import DjangoMedicineRepository
 from infrastructure.repositories.django_patient_repository import DjangoPatientRepository
 from infrastructure.repositories.django_prescription_repository import DjangoPrescriptionRepository
+from infrastructure.repositories.django_audit_log_repository import DjangoAuditLogRepository
 from infrastructure.repositories.django_user_repository import DjangoUserRepository
 
 
@@ -33,6 +34,7 @@ class DjangoUnitOfWork(IUnitOfWork):
         self.prescriptions = DjangoPrescriptionRepository()
         self.billing = DjangoBillingRepository()
         self.medicines = DjangoMedicineRepository()
+        self.audit_logs = DjangoAuditLogRepository()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

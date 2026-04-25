@@ -20,6 +20,8 @@ from interfaces.api.v1.consultations.serializers import (
     VitalsResponseSerializer,
     VitalsSerializer,
 )
+from infrastructure.services.audit_service import get_audit_service
+from interfaces.api.v1.mixins import AuditMixin, _get_client_ip
 from interfaces.permissions import ADMIN_ROLES, ConsultationOwnershipMixin, ModulePermission, RolePermission
 
 # Roles allowed to create/modify consultation records (write access)
@@ -60,7 +62,7 @@ def _consultation_to_dict(c: Consultation) -> Dict[str, Any]:
 # ── Views ─────────────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["consultations"])
-class ConsultationListView(APIView):
+class ConsultationListView(AuditMixin, APIView):
     """
     GET  /consultations/  — list/fetch consultations (filter by appointment_id or patient_id)
     POST /consultations/  — start a new consultation (clinical staff only)
@@ -68,6 +70,7 @@ class ConsultationListView(APIView):
     GET is available to reception staff (read-only audit/billing context).
     POST is restricted to clinical staff (doctor, assistant_doctor).
     """
+    audit_resource_type = "consultation"
     permission_classes = [IsAuthenticated, ModulePermission("consultations")]
 
     @extend_schema(
@@ -144,7 +147,7 @@ class ConsultationListView(APIView):
 
 
 @extend_schema(tags=["consultations"])
-class ConsultationDetailView(ConsultationOwnershipMixin, APIView):
+class ConsultationDetailView(AuditMixin, ConsultationOwnershipMixin, APIView):
     """
     GET   /consultations/<id>/  — retrieve a single consultation
     PATCH /consultations/<id>/  — update text fields while still a draft (clinical staff only)
@@ -153,6 +156,7 @@ class ConsultationDetailView(ConsultationOwnershipMixin, APIView):
     PATCH is restricted to clinical staff (doctor, assistant_doctor) who started
     the consultation.
     """
+    audit_resource_type = "consultation"
     permission_classes = [IsAuthenticated, ModulePermission("consultations")]
 
     @extend_schema(
@@ -164,6 +168,13 @@ class ConsultationDetailView(ConsultationOwnershipMixin, APIView):
         consultation = DjangoConsultationRepository().get_by_id(consultation_id)
         if not consultation:
             return Response({"error": "Consultation not found"}, status=status.HTTP_404_NOT_FOUND)
+        get_audit_service().log(
+            action="VIEW",
+            resource_type="consultation",
+            resource_id=str(consultation_id),
+            user_id=request.user.id if request.user.is_authenticated else None,
+            ip_address=_get_client_ip(request),
+        )
         return Response(_consultation_to_dict(consultation))
 
     @extend_schema(
@@ -213,8 +224,9 @@ class ConsultationDetailView(ConsultationOwnershipMixin, APIView):
 
 
 @extend_schema(tags=["consultations"])
-class CompleteConsultationView(ConsultationOwnershipMixin, APIView):
+class CompleteConsultationView(AuditMixin, ConsultationOwnershipMixin, APIView):
     # POST to /complete/ is semantically an update (finalising the consultation).
+    audit_resource_type = "consultation"
     permission_classes = [IsAuthenticated, ModulePermission("consultations", action="update")]
 
     @extend_schema(
@@ -275,7 +287,8 @@ class CompleteConsultationView(ConsultationOwnershipMixin, APIView):
     request=VitalsSerializer,
     responses={200: VitalsResponseSerializer},
 )
-class UpdateVitalsView(ConsultationOwnershipMixin, APIView):
+class UpdateVitalsView(AuditMixin, ConsultationOwnershipMixin, APIView):
+    audit_resource_type = "consultation"
     permission_classes = [IsAuthenticated, ModulePermission("consultations", action="update")]
 
     def patch(self, request: Request, consultation_id: uuid.UUID) -> Response:

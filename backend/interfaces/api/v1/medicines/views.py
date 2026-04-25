@@ -27,6 +27,7 @@ from interfaces.api.v1.medicines.serializers import (
     UpdateGenericMedicineSerializer,
     UpdateManufacturerSerializer,
 )
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.permissions import ModulePermission
 
 
@@ -81,11 +82,12 @@ def _brand_to_dict(b: BrandMedicine) -> Dict[str, Any]:
 # ── Generic medicines ─────────────────────────────────────────────────────────
 
 @extend_schema(tags=["medicines"])
-class GenericMedicineListView(APIView):
+class GenericMedicineListView(AuditMixin, APIView):
     """
     GET  /medicines/generics/  — list with optional search/filter
     POST /medicines/generics/  — create a new generic medicine (doctor/assistant_doctor/admin)
     """
+    audit_resource_type = "medicine"
     permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
@@ -158,12 +160,13 @@ class GenericMedicineListView(APIView):
 
 
 @extend_schema(tags=["medicines"])
-class GenericMedicineDetailView(APIView):
+class GenericMedicineDetailView(AuditMixin, APIView):
     """
     GET    /medicines/generics/<id>/  — get generic detail with brand list
     PATCH  /medicines/generics/<id>/  — update generic (doctor/assistant_doctor/admin)
     DELETE /medicines/generics/<id>/  — delete generic if no brands (admin only)
     """
+    audit_resource_type = "medicine"
     permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
@@ -251,11 +254,12 @@ class GenericMedicineDetailView(APIView):
 # ── Brand medicines ───────────────────────────────────────────────────────────
 
 @extend_schema(tags=["medicines"])
-class BrandMedicineListView(APIView):
+class BrandMedicineListView(AuditMixin, APIView):
     """
     GET  /medicines/brands/  — list brands with optional filters
     POST /medicines/brands/  — add a brand (doctor/assistant_doctor/admin)
     """
+    audit_resource_type = "medicine"
     permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
@@ -327,12 +331,13 @@ class BrandMedicineListView(APIView):
 
 
 @extend_schema(tags=["medicines"])
-class BrandMedicineDetailView(APIView):
+class BrandMedicineDetailView(AuditMixin, APIView):
     """
     GET    /medicines/brands/<id>/  — get brand detail
     PATCH  /medicines/brands/<id>/  — update brand (doctor/assistant_doctor/admin)
     DELETE /medicines/brands/<id>/  — deactivate brand (admin only)
     """
+    audit_resource_type = "medicine"
     permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
@@ -441,11 +446,12 @@ class MedicineSearchView(APIView):
 # ── Manufacturer CRUD ─────────────────────────────────────────────────────────
 
 @extend_schema(tags=["medicines"])
-class ManufacturerListView(APIView):
+class ManufacturerListView(AuditMixin, APIView):
     """
     GET  /medicines/manufacturers/  — list manufacturers (active by default)
     POST /medicines/manufacturers/  — create manufacturer (doctor/assistant_doctor/admin)
     """
+    audit_resource_type = "medicine"
     permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(
@@ -500,12 +506,13 @@ class ManufacturerListView(APIView):
 
 
 @extend_schema(tags=["medicines"])
-class ManufacturerDetailView(APIView):
+class ManufacturerDetailView(AuditMixin, APIView):
     """
     GET    /medicines/manufacturers/<id>/  — detail
     PATCH  /medicines/manufacturers/<id>/  — update (doctor/assistant_doctor/admin)
     DELETE /medicines/manufacturers/<id>/  — deactivate (admin only)
     """
+    audit_resource_type = "medicine"
     permission_classes = [IsAuthenticated, ModulePermission("medicines")]
 
     @extend_schema(summary="Get manufacturer", responses={200: ManufacturerSerializer})

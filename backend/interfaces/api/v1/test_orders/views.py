@@ -16,6 +16,7 @@ from interfaces.api.v1.test_orders.serializers import (
     TestOrderResponseSerializer,
     UpdateTestOrderSerializer,
 )
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.permissions import ConsultationOwnershipMixin, ModulePermission, RolePermission
 
 
@@ -43,7 +44,7 @@ def _order_to_dict(order) -> Dict[str, Any]:
 # ── Views ─────────────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["test-orders"])
-class ConsultationTestOrdersView(ConsultationOwnershipMixin, APIView):
+class ConsultationTestOrdersView(AuditMixin, ConsultationOwnershipMixin, APIView):
     """
     GET  /consultations/<id>/test-orders/  — list test orders for a consultation
     POST /consultations/<id>/test-orders/  — add one or more test orders
@@ -51,6 +52,7 @@ class ConsultationTestOrdersView(ConsultationOwnershipMixin, APIView):
     Doctor orders are auto-approved.
     Assistant-doctor orders start as "pending" and require doctor approval.
     """
+    audit_resource_type = "test_order"
     permission_classes = [IsAuthenticated, ModulePermission("test_orders")]
 
     @extend_schema(
@@ -129,7 +131,7 @@ class ConsultationTestOrdersView(ConsultationOwnershipMixin, APIView):
 
 
 @extend_schema(tags=["test-orders"])
-class TestOrderDetailView(ConsultationOwnershipMixin, APIView):
+class TestOrderDetailView(AuditMixin, ConsultationOwnershipMixin, APIView):
     """
     PATCH  /test-orders/<id>/  — update lab_name, notes, completion status, or approval_status
     DELETE /test-orders/<id>/  — cancel / remove a test order
@@ -139,6 +141,7 @@ class TestOrderDetailView(ConsultationOwnershipMixin, APIView):
     - Assistant doctor: can only edit/delete orders that are still "pending" in consultations
       they started. Cannot change approval_status.
     """
+    audit_resource_type = "test_order"
     permission_classes = [IsAuthenticated, ModulePermission("test_orders")]
 
     @extend_schema(

@@ -142,7 +142,9 @@
       "Bash(python -c ' *)",
       "Bash(find \"/Users/tanim/WorkSpace/Personal/VibeCoding/Claude Code/MediDesk/backend/domain/entities\" -name \"*.py\" -exec basename {} \\\\;)",
       "Bash(find \"/Users/tanim/WorkSpace/Personal/VibeCoding/Claude Code/MediDesk/backend/infrastructure/orm/models\" -name \"*.py\" -exec basename {} \\\\;)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8005/api/v1/test-orders/mine/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8005/api/v1/test-orders/mine/)",
+      "Bash(.venv/bin/python manage.py shell -c ' *)",
+      "Bash(git add *)"
     ]
   }
 }

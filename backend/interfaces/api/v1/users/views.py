@@ -13,6 +13,7 @@ from application.use_cases.user.deactivate_user import DeactivateUserUseCase
 from application.use_cases.user.update_user import UpdateUserUseCase
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from interfaces.api.v1.users.serializers import CreateUserSerializer, UpdateUserSerializer
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.permissions import AdminOnly
 
 
@@ -41,9 +42,10 @@ class DoctorsListView(APIView):
         ])
 
 
-class UserListView(APIView):
+class UserListView(AuditMixin, APIView):
     """GET  /users/  — list all users (admin only)
        POST /users/  — create a new user (admin only)"""
+    audit_resource_type = "user"
     permission_classes = [IsAuthenticated, AdminOnly]
 
     @extend_schema(
@@ -127,10 +129,11 @@ class UserListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserDetailView(APIView):
+class UserDetailView(AuditMixin, APIView):
     """GET   /users/<id>/ — get user
        PATCH /users/<id>/ — update user (admin only)
        DELETE /users/<id>/ — deactivate user (admin only)"""
+    audit_resource_type = "user"
     permission_classes = [IsAuthenticated, AdminOnly]
 
     @extend_schema(tags=["users"], summary="Get user by ID")

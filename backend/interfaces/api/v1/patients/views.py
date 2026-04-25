@@ -16,10 +16,13 @@ from interfaces.api.v1.patients.serializers import (
     RegisterPatientSerializer,
     UpdatePatientSerializer,
 )
+from infrastructure.services.audit_service import get_audit_service
+from interfaces.api.v1.mixins import AuditMixin, _get_client_ip
 from interfaces.permissions import ModulePermission, RolePermission
 
 
-class PatientRegistrationView(APIView):
+class PatientRegistrationView(AuditMixin, APIView):
+    audit_resource_type = "patient"
     # patients.create: doctor, receptionist, assistant — NOT assistant_doctor (matrix enforces this).
     permission_classes = [IsAuthenticated, ModulePermission("patients")]
 
@@ -95,7 +98,8 @@ class PatientSearchView(APIView):
         })
 
 
-class PatientDetailView(APIView):
+class PatientDetailView(AuditMixin, APIView):
+    audit_resource_type = "patient"
     permission_classes = [IsAuthenticated, ModulePermission("patients")]
 
     @extend_schema(
@@ -168,6 +172,14 @@ class PatientHistoryView(APIView):
         patient = patient_repo.get_by_id(patient_id)
         if not patient:
             return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        get_audit_service().log(
+            action="VIEW",
+            resource_type="patient",
+            resource_id=str(patient_id),
+            user_id=request.user.id if request.user.is_authenticated else None,
+            ip_address=_get_client_ip(request),
+        )
 
         # Appointments
         appointments = DjangoAppointmentRepository().get_by_patient(patient_id, limit=50)
@@ -323,7 +335,8 @@ class PatientHistoryView(APIView):
         "observations, reception reminders, or clinical flags."
     ),
 )
-class PatientNoteCreateView(APIView):
+class PatientNoteCreateView(AuditMixin, APIView):
+    audit_resource_type = "patient_note"
     permission_classes = [IsAuthenticated, ModulePermission("patients")]
 
     def post(self, request: Request, patient_id: uuid.UUID) -> Response:

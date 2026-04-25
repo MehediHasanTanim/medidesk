@@ -12,6 +12,8 @@ from application.use_cases.billing.cancel_invoice import CancelInvoiceUseCase
 from application.use_cases.billing.create_invoice import CreateInvoiceUseCase
 from application.use_cases.billing.record_payment import RecordPaymentUseCase
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
+from infrastructure.services.audit_service import get_audit_service
+from interfaces.api.v1.mixins import AuditMixin, _get_client_ip
 from interfaces.permissions import ADMIN_ROLES, ModulePermission
 from interfaces.api.v1.billing.serializers import (
     CreateInvoiceResponseSerializer,
@@ -42,7 +44,8 @@ def _invoice_summary(inv) -> dict:
 
 
 @extend_schema(tags=["billing"])
-class InvoiceView(APIView):
+class InvoiceView(AuditMixin, APIView):
+    audit_resource_type = "invoice"
     # ModulePermission("billing") handles the outer gate:
     #   GET  → billing.view  (doctor, receptionist, assistant)
     #   POST → billing.create (receptionist, assistant only)
@@ -142,7 +145,8 @@ class InvoiceView(APIView):
 
 
 @extend_schema(tags=["billing"])
-class InvoiceDetailView(APIView):
+class InvoiceDetailView(AuditMixin, APIView):
+    audit_resource_type = "invoice"
     permission_classes = [IsAuthenticated, ModulePermission("billing")]
 
     @extend_schema(
@@ -159,6 +163,13 @@ class InvoiceDetailView(APIView):
                 )
             payments = uow.billing.get_payments_by_invoice(invoice_id)
 
+        get_audit_service().log(
+            action="VIEW",
+            resource_type="invoice",
+            resource_id=str(invoice_id),
+            user_id=request.user.id if request.user.is_authenticated else None,
+            ip_address=_get_client_ip(request),
+        )
         return Response({
             **_invoice_summary(invoice),
             "items": [
@@ -211,7 +222,8 @@ class InvoiceDetailView(APIView):
 
 
 @extend_schema(tags=["billing"])
-class PaymentView(APIView):
+class PaymentView(AuditMixin, APIView):
+    audit_resource_type = "payment"
     permission_classes = [IsAuthenticated, ModulePermission("billing")]
 
     @extend_schema(

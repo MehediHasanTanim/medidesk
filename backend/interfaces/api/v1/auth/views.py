@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.api.v1.auth.serializers import (
     ChangePasswordSerializer,
     CustomTokenObtainPairSerializer,
@@ -32,8 +33,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
 
-class MeView(APIView):
+class MeView(AuditMixin, APIView):
     """Current user profile — get or update."""
+    audit_resource_type = "user"
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -81,8 +83,9 @@ class MeView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ChangePasswordView(APIView):
+class ChangePasswordView(AuditMixin, APIView):
     """Change the authenticated user's password."""
+    audit_resource_type = "user"
     permission_classes = [IsAuthenticated]
 
     @extend_schema(

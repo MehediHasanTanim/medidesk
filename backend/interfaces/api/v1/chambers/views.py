@@ -11,12 +11,14 @@ from application.dtos.user_dto import CreateChamberDTO, UpdateChamberDTO
 from application.use_cases.chamber.manage_chamber import CreateChamberUseCase, UpdateChamberUseCase
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from interfaces.api.v1.chambers.serializers import CreateChamberSerializer, UpdateChamberSerializer
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.permissions import AdminOnly
 
 
-class ChamberListView(APIView):
+class ChamberListView(AuditMixin, APIView):
     """GET  /chambers/ — list chambers (all authenticated users)
        POST /chambers/ — create chamber (admin only)"""
+    audit_resource_type = "chamber"
 
     def get_permissions(self):
         if self.request.method == "POST":
@@ -75,9 +77,10 @@ class ChamberListView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ChamberDetailView(APIView):
+class ChamberDetailView(AuditMixin, APIView):
     """GET   /chambers/<id>/ — get chamber
        PATCH /chambers/<id>/ — update chamber (admin only)"""
+    audit_resource_type = "chamber"
 
     def get_permissions(self):
         if self.request.method in ("PATCH", "DELETE"):

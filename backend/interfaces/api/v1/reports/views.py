@@ -12,6 +12,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from interfaces.api.v1.reports.serializers import UploadReportSerializer, ReportResponseSerializer
+from infrastructure.services.audit_service import get_audit_service
+from interfaces.api.v1.mixins import AuditMixin, _get_client_ip
 from interfaces.permissions import ModulePermission
 
 
@@ -30,11 +32,12 @@ def _report_to_dict(report, request) -> dict:
 
 
 @extend_schema(tags=["reports"])
-class ReportUploadView(APIView):
+class ReportUploadView(AuditMixin, APIView):
     """
     POST /reports/  — upload a patient report document (multipart/form-data)
     GET  /reports/?patient_id=<uuid>[&consultation_id=<uuid>]  — list reports
     """
+    audit_resource_type = "report"
     permission_classes = [IsAuthenticated, ModulePermission("reports")]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -131,6 +134,13 @@ class ReportFileView(APIView):
         except ReportDocumentModel.DoesNotExist:
             return Response({"error": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        get_audit_service().log(
+            action="VIEW",
+            resource_type="report",
+            resource_id=str(report_id),
+            user_id=request.user.id if request.user.is_authenticated else None,
+            ip_address=_get_client_ip(request),
+        )
         try:
             file_path = report.file.path
         except Exception:
