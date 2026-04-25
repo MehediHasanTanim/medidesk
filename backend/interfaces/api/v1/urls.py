@@ -56,6 +56,8 @@ from interfaces.api.v1.prescriptions.views import (
     PrescriptionByConsultationView,
     ApprovePrescriptionView,
     PendingPrescriptionsView,
+    PrescriptionPDFView,
+    SendPrescriptionView,
 )
 from interfaces.api.v1.billing.views import InvoiceView, PaymentView, InvoiceDetailView
 from interfaces.api.v1.test_orders.views import (
@@ -120,6 +122,8 @@ urlpatterns = [
     path("prescriptions/<uuid:prescription_id>/", PrescriptionDetailView.as_view(), name="prescription_detail"),
     path("prescriptions/pending/", PendingPrescriptionsView.as_view(), name="pending_prescriptions"),
     path("prescriptions/<uuid:prescription_id>/approve/", ApprovePrescriptionView.as_view(), name="approve_prescription"),
+    path("prescriptions/<uuid:prescription_id>/pdf/", PrescriptionPDFView.as_view(), name="prescription_pdf"),
+    path("prescriptions/<uuid:prescription_id>/send/", SendPrescriptionView.as_view(), name="send_prescription"),
     path("prescriptions/consultation/<uuid:consultation_id>/", PrescriptionByConsultationView.as_view(), name="prescription_by_consultation"),
 
     # ── Billing ───────────────────────────────────────────────────────────────

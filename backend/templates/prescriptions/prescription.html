@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 10pt;
+    color: #1a1a2e;
+    line-height: 1.45;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  .header {
+    border-bottom: 3px solid #1d4ed8;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .clinic-name {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #1d4ed8;
+    letter-spacing: -0.5px;
+  }
+
+  .doctor-block { text-align: right; }
+
+  .doctor-name {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+
+  .doctor-meta {
+    font-size: 8.5pt;
+    color: #555;
+    margin-top: 2px;
+  }
+
+  /* ── Patient strip ──────────────────────────────────────────── */
+  .patient-strip {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 14px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .patient-strip .field { flex: 1; min-width: 140px; }
+
+  .field-label {
+    font-size: 7.5pt;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+
+  .field-value {
+    font-size: 9.5pt;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin-top: 1px;
+  }
+
+  /* ── Rx symbol ──────────────────────────────────────────────── */
+  .rx-symbol {
+    font-size: 22pt;
+    font-weight: 700;
+    color: #1d4ed8;
+    margin-bottom: 6px;
+    font-style: italic;
+  }
+
+  /* ── Medicine table ─────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    margin-bottom: 14px;
+  }
+
+  thead th {
+    background: #1d4ed8;
+    color: #fff;
+    font-size: 8pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 6px 8px;
+    text-align: left;
+  }
+
+  tbody tr:nth-child(even) { background: #f8fafc; }
+
+  tbody td {
+    padding: 7px 8px;
+    font-size: 9.5pt;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+
+  .medicine-name { font-weight: 700; }
+
+  .dosage-cell {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 9pt;
+    color: #1d4ed8;
+    white-space: nowrap;
+  }
+
+  .instructions-cell { color: #374151; font-size: 8.5pt; }
+
+  /* ── Follow-up ──────────────────────────────────────────────── */
+  .followup {
+    border: 1.5px dashed #1d4ed8;
+    border-radius: 5px;
+    padding: 7px 12px;
+    margin-top: 8px;
+    font-size: 9.5pt;
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+
+  /* ── Footer ─────────────────────────────────────────────────── */
+  .footer {
+    margin-top: 24px;
+    padding-top: 10px;
+    border-top: 1px solid #d1d5db;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 8pt;
+    color: #9ca3af;
+  }
+
+  .signature-area { text-align: right; }
+
+  .signature-line {
+    border-top: 1px solid #374151;
+    width: 140px;
+    margin-left: auto;
+    margin-bottom: 4px;
+  }
+
+  .signature-label { font-size: 8pt; color: #374151; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<div class="header">
+  <div>
+    <div class="clinic-name">MediDesk</div>
+    <div style="font-size:8pt; color:#6b7280; margin-top:2px;">
+      {{ chamber_name }}{% if chamber_address %} · {{ chamber_address }}{% endif %}
+    </div>
+  </div>
+  <div class="doctor-block">
+    <div class="doctor-name">Dr. {{ doctor_name }}</div>
+    <div class="doctor-meta">{{ doctor_qualifications }}</div>
+    <div class="doctor-meta">{{ doctor_speciality }}</div>
+  </div>
+</div>
+
+<!-- ── Patient strip ─────────────────────────────────── -->
+<div class="patient-strip">
+  <div class="field">
+    <div class="field-label">Patient</div>
+    <div class="field-value">{{ patient_name }}</div>
+  </div>
+  {% if patient_age %}<div class="field">
+    <div class="field-label">Age / Sex</div>
+    <div class="field-value">{{ patient_age }}</div>
+  </div>{% endif %}
+  <div class="field">
+    <div class="field-label">Date</div>
+    <div class="field-value">{{ prescription_date }}</div>
+  </div>
+  <div class="field">
+    <div class="field-label">Rx ID</div>
+    <div class="field-value" style="font-size:7.5pt; color:#6b7280;">{{ rx_id }}</div>
+  </div>
+</div>
+
+<!-- ── Rx symbol ─────────────────────────────────────── -->
+<div class="rx-symbol">&#8478;</div>
+
+<!-- ── Medicine table ────────────────────────────────── -->
+<table>
+  <thead>
+    <tr>
+      <th style="width:4%">#</th>
+      <th style="width:32%">Medicine</th>
+      <th style="width:16%">Dosage</th>
+      <th style="width:10%">Duration</th>
+      <th style="width:12%">Route</th>
+      <th style="width:26%">Instructions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td style="color:#9ca3af">{{ forloop.counter }}</td>
+      <td class="medicine-name">{{ item.medicine_name }}</td>
+      <td class="dosage-cell">{{ item.morning }}+{{ item.afternoon }}+{{ item.evening }}</td>
+      <td>{{ item.duration_days }} day{% if item.duration_days != 1 %}s{% endif %}</td>
+      <td style="text-transform:capitalize">{{ item.route }}</td>
+      <td class="instructions-cell">{{ item.instructions|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if follow_up_date %}
+<div class="followup">
+  Next Visit: {{ follow_up_date }}
+</div>
+{% endif %}
+
+<!-- ── Footer ────────────────────────────────────────── -->
+<div class="footer">
+  <div>
+    Generated by MediDesk &nbsp;·&nbsp; {{ generated_at }}
+  </div>
+  <div class="signature-area">
+    <div class="signature-line"></div>
+    <div class="signature-label">Dr. {{ doctor_name }}</div>
+    <div style="font-size:7.5pt; color:#9ca3af;">{{ doctor_qualifications }}</div>
+  </div>
+</div>
+
+</body>
+</html>

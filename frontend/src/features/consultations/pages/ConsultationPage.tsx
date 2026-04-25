@@ -21,6 +21,7 @@ import {
 import type { MedicineSearchResult } from "@/features/medicines/api/medicinesApi";
 import MedicineSearchInputShared from "@/features/prescriptions/components/MedicineSearchInput";
 import PrescriptionEditForm from "@/features/prescriptions/components/PrescriptionEditForm";
+import PrescriptionShareBar from "@/features/prescriptions/components/PrescriptionShareBar";
 import ConsultationInvoiceSection from "@/features/billing/components/ConsultationInvoiceSection";
 import LabTestsSection from "@/features/testOrders/components/LabTestsSection";
 
@@ -324,6 +325,8 @@ function PrescriptionView({ rx, userRole, onApproved, onEdited }: {
           </div>
         ))}
       </div>
+
+      <PrescriptionShareBar prescriptionId={rx.prescription_id} status={rx.status} />
     </div>
   );
 }

@@ -2,7 +2,9 @@ import uuid
 from typing import Any, Dict, List
 
 from django.db.models import Count, Q
-from drf_spectacular.utils import extend_schema
+from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -345,3 +347,79 @@ class PendingPrescriptionsView(APIView):
             }
             for p in qs
         ])
+
+
+@extend_schema(tags=["prescriptions"])
+class PrescriptionPDFView(APIView):
+    """
+    GET /prescriptions/<id>/pdf/
+    Generates and streams the prescription as a PDF download.
+    """
+    permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
+
+    @extend_schema(
+        summary="Download prescription as PDF",
+        description=(
+            "Renders the prescription using WeasyPrint and returns it as an "
+            "inline PDF.  Pass `?download=1` to force a file-download prompt."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "download", OpenApiTypes.INT, OpenApiParameter.QUERY,
+                description="Set to 1 to force browser download instead of inline view.",
+                required=False,
+            )
+        ],
+        responses={200: OpenApiTypes.BINARY},
+    )
+    def get(self, request: Request, prescription_id: uuid.UUID) -> HttpResponse:
+        from application.use_cases.prescription.generate_pdf import GeneratePrescriptionPDFUseCase
+
+        try:
+            pdf_bytes = GeneratePrescriptionPDFUseCase().execute(prescription_id)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        disposition = "attachment" if request.query_params.get("download") == "1" else "inline"
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'{disposition}; filename="prescription-{str(prescription_id)[:8]}.pdf"'
+        response["Content-Length"] = len(pdf_bytes)
+        return response
+
+
+@extend_schema(tags=["prescriptions"])
+class SendPrescriptionView(APIView):
+    """
+    POST /prescriptions/<id>/send/
+    Generates PDF then dispatches via WhatsApp and/or email.
+    """
+    permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
+
+    @extend_schema(
+        summary="Send prescription via WhatsApp / email",
+        description=(
+            "Generates the prescription PDF and dispatches it through the "
+            "requested channels.  Body: `{\"channels\": \"all\" | \"whatsapp\" | \"email\"}`."
+        ),
+        responses={200: {"type": "object", "properties": {
+            "prescription_id": {"type": "string"},
+            "channels": {"type": "string"},
+            "success": {"type": "boolean"},
+            "pdf_size_bytes": {"type": "integer"},
+        }}},
+    )
+    def post(self, request: Request, prescription_id: uuid.UUID) -> Response:
+        from application.use_cases.prescription.send_prescription import SendPrescriptionUseCase
+
+        channels = request.data.get("channels", "all")
+        if channels not in ("all", "whatsapp", "email"):
+            return Response(
+                {"error": "channels must be 'all', 'whatsapp', or 'email'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = SendPrescriptionUseCase().execute(prescription_id, channels=channels)
+            return Response(result)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

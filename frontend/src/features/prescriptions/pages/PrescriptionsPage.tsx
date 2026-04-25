@@ -8,6 +8,7 @@ import { testOrdersApi, type TestOrder } from "@/features/testOrders/api/testOrd
 import { AddTestsPanel } from "@/features/testOrders/components/LabTestsSection";
 import PendingTestsGroup from "@/features/testOrders/components/PendingTestsGroup";
 import { useAuthStore } from "@/features/auth/store/authStore";
+import PrescriptionShareBar from "@/features/prescriptions/components/PrescriptionShareBar";
 
 function PrescriptionRow({
   rx,
@@ -176,6 +177,11 @@ function PrescriptionRow({
                   </div>
                 )}
 
+                <PrescriptionShareBar
+                  prescriptionId={detail.prescription_id}
+                  status={detail.status}
+                />
+
                 {/* ── Lab tests section ── */}
                 <div style={{
                   marginTop: 20,
@@ -334,6 +340,10 @@ function MyDraftRow({ rx }: { rx: PendingPrescription }) {
                   Follow-up: {detail.follow_up_date}
                 </div>
               )}
+              <PrescriptionShareBar
+                prescriptionId={detail.prescription_id}
+                status={detail.status}
+              />
             </>
           )}
         </div>

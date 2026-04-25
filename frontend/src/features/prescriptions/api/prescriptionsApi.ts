@@ -116,4 +116,48 @@ export const prescriptionsApi = {
         {}
       )
       .then((r) => r.data),
+
+  /** GET /prescriptions/<id>/pdf/ — stream PDF bytes; returns a Blob URL for download/print. */
+  getPdfUrl: (prescriptionId: string, download = false): string => {
+    const base = apiClient.defaults.baseURL ?? "";
+    const token = localStorage.getItem("access_token") ?? "";
+    const dl = download ? "&download=1" : "";
+    // Returns a URL the caller can open in a new tab; JWT auth via query param not supported
+    // here — we use the Blob approach instead (see downloadPdf).
+    return `${base}/prescriptions/${prescriptionId}/pdf/?token=${token}${dl}`;
+  },
+
+  /** Download the prescription PDF as a Blob and trigger browser save/print. */
+  downloadPdf: async (prescriptionId: string, download = false): Promise<void> => {
+    const resp = await apiClient.get(`/prescriptions/${prescriptionId}/pdf/`, {
+      responseType: "blob",
+      params: download ? { download: 1 } : {},
+    });
+    const blob = new Blob([resp.data as BlobPart], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    if (download) {
+      a.download = `prescription-${prescriptionId.slice(0, 8)}.pdf`;
+    } else {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    }
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  /** POST /prescriptions/<id>/send/ — dispatch via WhatsApp / email / all. */
+  send: (
+    prescriptionId: string,
+    channels: "all" | "whatsapp" | "email" = "all"
+  ) =>
+    apiClient
+      .post<{ prescription_id: string; channels: string; success: boolean; pdf_size_bytes: number }>(
+        `/prescriptions/${prescriptionId}/send/`,
+        { channels }
+      )
+      .then((r) => r.data),
 };
