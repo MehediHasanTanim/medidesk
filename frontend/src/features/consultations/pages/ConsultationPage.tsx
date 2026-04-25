@@ -24,6 +24,7 @@ import PrescriptionEditForm from "@/features/prescriptions/components/Prescripti
 import PrescriptionShareBar from "@/features/prescriptions/components/PrescriptionShareBar";
 import ConsultationInvoiceSection from "@/features/billing/components/ConsultationInvoiceSection";
 import LabTestsSection from "@/features/testOrders/components/LabTestsSection";
+import ReportsSection from "@/features/reports/components/ReportsSection";
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -869,6 +870,15 @@ export default function ConsultationPage() {
               <LabTestsSection consultationId={consultation.id} userRole={user?.role ?? ""} />
             </div>
 
+            {/* Reports — full width below lab tests */}
+            <div style={cardStyle}>
+              <ReportsSection
+                consultationId={consultation.id}
+                patientId={consultation.patient_id}
+                userRole={user?.role ?? ""}
+              />
+            </div>
+
             {/* Invoice — full width below the grid */}
             <div style={cardStyle}>
               <ConsultationInvoiceSection
@@ -938,6 +948,15 @@ export default function ConsultationPage() {
             {/* Lab Tests — visible to all; add/approve controls hidden for non-clinical via userRole */}
             <div style={cardStyle}>
               <LabTestsSection consultationId={consultation.id} userRole={user?.role ?? ""} />
+            </div>
+
+            {/* Reports */}
+            <div style={cardStyle}>
+              <ReportsSection
+                consultationId={consultation.id}
+                patientId={consultation.patient_id}
+                userRole={user?.role ?? ""}
+              />
             </div>
           </>
         )}

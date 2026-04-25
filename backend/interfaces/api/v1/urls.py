@@ -49,7 +49,7 @@ from interfaces.api.v1.medicines.views import (
     ManufacturerListView,
     ManufacturerDetailView,
 )
-from interfaces.api.v1.reports.views import ReportUploadView, ReportFileView
+from interfaces.api.v1.reports.views import ReportUploadView, ReportFileView, ReportDetailView
 from interfaces.api.v1.prescriptions.views import (
     PrescriptionView,
     PrescriptionDetailView,
@@ -140,6 +140,7 @@ urlpatterns = [
 
     # ── Reports ───────────────────────────────────────────────────────────────
     path("reports/", ReportUploadView.as_view(), name="reports"),
+    path("reports/<uuid:report_id>/", ReportDetailView.as_view(), name="report_detail"),
     path("reports/<uuid:report_id>/file/", ReportFileView.as_view(), name="report_file"),
 
     # ── Medicines ─────────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ def _report_to_dict(report, request) -> dict:
         "id": str(report.id),
         "patient_id": str(report.patient_id),
         "consultation_id": str(report.consultation_id) if report.consultation_id else None,
+        "test_order_id": str(report.test_order_id) if report.test_order_id else None,
         "category": report.category,
         "file_url": report.file.url,   # relative path (/media/...) — proxied by frontend dev server; nginx serves it in prod
         "original_filename": report.original_filename,
@@ -70,6 +71,7 @@ class ReportUploadView(AuditMixin, APIView):
         report = ReportDocumentModel.objects.create(
             patient=patient,
             consultation_id=data.get("consultation_id"),
+            test_order_id=data.get("test_order_id"),
             category=data["category"],
             file=uploaded_file,
             original_filename=uploaded_file.name,
@@ -104,6 +106,17 @@ class ReportUploadView(AuditMixin, APIView):
                 qs = qs.filter(consultation_id=uuid.UUID(consultation_id_str))
             except ValueError:
                 return Response({"error": "Invalid consultation_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        test_order_id_str = request.query_params.get("test_order_id")
+        if test_order_id_str:
+            try:
+                qs = qs.filter(test_order_id=uuid.UUID(test_order_id_str))
+            except ValueError:
+                return Response({"error": "Invalid test_order_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        category = request.query_params.get("category")
+        if category:
+            qs = qs.filter(category=category)
 
         return Response([_report_to_dict(r, request) for r in qs])
 
@@ -160,3 +173,34 @@ class ReportFileView(APIView):
         response["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
         response["Cache-Control"] = "private, max-age=3600"
         return response
+
+
+@extend_schema(tags=["reports"])
+class ReportDetailView(AuditMixin, APIView):
+    """
+    DELETE /reports/<report_id>/  — remove a report document (clinical staff only)
+    """
+    audit_resource_type = "report"
+    permission_classes = [IsAuthenticated, ModulePermission("reports")]
+
+    @extend_schema(
+        summary="Delete a report",
+        description="Permanently delete a report document and its file from storage.",
+        responses={204: None},
+    )
+    def delete(self, request: Request, report_id: uuid.UUID) -> Response:
+        from infrastructure.orm.models.test_order_model import ReportDocumentModel
+
+        try:
+            report = ReportDocumentModel.objects.get(id=report_id)
+        except ReportDocumentModel.DoesNotExist:
+            return Response({"error": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            if report.file and os.path.exists(report.file.path):
+                os.remove(report.file.path)
+        except Exception:
+            pass
+
+        report.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

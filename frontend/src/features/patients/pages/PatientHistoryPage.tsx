@@ -6,7 +6,7 @@ import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import apiClient from "@/shared/lib/apiClient";
 import type { Patient } from "@/features/patients/api/patientsApi";
 import { useAuthStore } from "@/features/auth/store/authStore";
-import { reportsApi, type ReportCategory } from "@/features/reports/api/reportsApi";
+import { reportsApi, viewReport, downloadReport, REPORT_CATEGORY_LABELS, REPORT_CATEGORY_ICONS, type ReportCategory } from "@/features/reports/api/reportsApi";
 import { testOrdersApi, type TestOrder } from "@/features/testOrders/api/testOrdersApi";
 
 interface Vitals {
@@ -135,12 +135,6 @@ const TYPE_META = {
   },
 } as const;
 
-const REPORT_CATEGORY_LABELS: Record<string, string> = {
-  blood_test: "Blood Test",
-  imaging: "Imaging",
-  biopsy: "Biopsy",
-  other: "Other",
-};
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: colors.textMuted,
@@ -428,7 +422,7 @@ function ReportCard({ r }: { r: Report }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <span style={{ background: "#f0fdf4", color: "#15803d", padding: "2px 10px", borderRadius: 999, fontSize: "12px", fontWeight: 600, border: "1px solid #bbf7d0" }}>
-              {REPORT_CATEGORY_LABELS[r.category] ?? r.category}
+              {REPORT_CATEGORY_LABELS[r.category as ReportCategory] ?? r.category}
             </span>
           </div>
           <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.original_filename}>
@@ -515,37 +509,6 @@ function NoteCard({ note }: { note: PatientNote }) {
   );
 }
 
-// ─── Report helpers ───────────────────────────────────────────────────────────
-
-async function viewReport(reportId: string) {
-  const win = window.open("about:blank", "_blank");
-  if (!win) { alert("Popup blocked — please allow popups for this site."); return; }
-  try {
-    const res = await apiClient.get(`/reports/${reportId}/file/`, { responseType: "blob" });
-    const blob = new Blob([res.data], { type: res.headers["content-type"] ?? "application/octet-stream" });
-    win.location.href = URL.createObjectURL(blob);
-  } catch {
-    win.close();
-    alert("Failed to open the report. Please try again.");
-  }
-}
-
-async function downloadReport(reportId: string, filename: string) {
-  try {
-    const res = await apiClient.get(`/reports/${reportId}/file/?download=1`, { responseType: "blob" });
-    const blob = new Blob([res.data], { type: res.headers["content-type"] ?? "application/octet-stream" });
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(objectUrl);
-  } catch {
-    alert("Failed to download the report. Please try again.");
-  }
-}
 
 // ─── Upload panel ─────────────────────────────────────────────────────────────
 
@@ -841,6 +804,187 @@ function AddNotePanel({ patientId, onSuccess, onCancel }: {
   );
 }
 
+// ─── Historical comparison panel ──────────────────────────────────────────────
+
+const CATEGORY_ORDER: ReportCategory[] = ["blood_test", "imaging", "biopsy", "other"];
+
+function ReportHistoryPanel({ reports }: { reports: Report[] }) {
+  const [activeCategory, setActiveCategory] = useState<ReportCategory | "all">("all");
+
+  const byCategory = new Map<ReportCategory, Report[]>();
+  for (const r of reports) {
+    const cat = r.category as ReportCategory;
+    if (!byCategory.has(cat)) byCategory.set(cat, []);
+    byCategory.get(cat)!.push(r);
+  }
+
+  const visibleReports = activeCategory === "all"
+    ? [...reports].sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+    : (byCategory.get(activeCategory) ?? []).sort(
+        (a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+      );
+
+  return (
+    <div style={{
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderRadius: radius.lg,
+      padding: 24,
+      marginTop: 32,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: font.lg, fontWeight: 700, color: colors.text }}>
+            Reports History
+          </h2>
+          <div style={{ fontSize: font.sm, color: colors.textMuted, marginTop: 2 }}>
+            {reports.length} report{reports.length !== 1 ? "s" : ""} · filter by category to compare over time
+          </div>
+        </div>
+
+        {/* Category filter pills */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setActiveCategory("all")}
+            style={{
+              padding: "4px 14px",
+              border: `1.5px solid ${activeCategory === "all" ? colors.primary : colors.border}`,
+              borderRadius: 999,
+              background: activeCategory === "all" ? colors.primaryLight : colors.white,
+              color: activeCategory === "all" ? colors.primary : colors.textMuted,
+              cursor: "pointer",
+              fontSize: font.sm,
+              fontWeight: activeCategory === "all" ? 700 : 400,
+              transition: "all 0.12s",
+            }}
+          >
+            All ({reports.length})
+          </button>
+          {CATEGORY_ORDER.filter((cat) => byCategory.has(cat)).map((cat) => {
+            const count = byCategory.get(cat)!.length;
+            const isActive = activeCategory === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                style={{
+                  padding: "4px 14px",
+                  border: `1.5px solid ${isActive ? colors.primary : colors.border}`,
+                  borderRadius: 999,
+                  background: isActive ? colors.primaryLight : colors.white,
+                  color: isActive ? colors.primary : colors.textMuted,
+                  cursor: "pointer",
+                  fontSize: font.sm,
+                  fontWeight: isActive ? 700 : 400,
+                  transition: "all 0.12s",
+                }}
+              >
+                {REPORT_CATEGORY_ICONS[cat]} {REPORT_CATEGORY_LABELS[cat]} ({count})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Report grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+        {visibleReports.map((r) => {
+          const cat = r.category as ReportCategory;
+          return (
+            <div
+              key={r.id}
+              style={{
+                border: `1px solid ${colors.border}`,
+                borderRadius: radius.md,
+                padding: "14px 16px",
+                background: colors.white,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              {/* Category + date row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{
+                  padding: "2px 10px",
+                  borderRadius: 999,
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: "#f0fdf4",
+                  color: "#15803d",
+                  border: "1px solid #bbf7d0",
+                  flexShrink: 0,
+                }}>
+                  {REPORT_CATEGORY_ICONS[cat]} {REPORT_CATEGORY_LABELS[cat] ?? cat}
+                </span>
+                <span style={{ fontSize: font.sm, color: colors.textMuted, flexShrink: 0 }}>
+                  {new Date(r.uploaded_at).toLocaleDateString("en-BD", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+              </div>
+
+              {/* Filename */}
+              <div style={{ fontWeight: 600, fontSize: font.base, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.original_filename}>
+                {r.original_filename}
+              </div>
+
+              {/* Notes */}
+              {r.notes && (
+                <div style={{ fontSize: font.sm, color: colors.textMuted, fontStyle: "italic", lineHeight: 1.4 }}>
+                  {r.notes}
+                </div>
+              )}
+
+              {r.uploaded_by_name && (
+                <div style={{ fontSize: font.sm, color: colors.textMuted }}>
+                  by {r.uploaded_by_name}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button
+                  onClick={() => viewReport(r.id)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    background: colors.primaryLight,
+                    color: colors.primary,
+                    border: `1px solid #bfdbfe`,
+                    borderRadius: radius.md,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: font.sm,
+                  }}
+                >
+                  👁 View
+                </button>
+                <button
+                  onClick={() => downloadReport(r.id, r.original_filename)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    background: colors.white,
+                    color: colors.text,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: radius.md,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: font.sm,
+                  }}
+                >
+                  ⬇ Download
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PatientHistoryPage() {
@@ -1130,6 +1274,11 @@ export default function PatientHistoryPage() {
               );
             })}
           </div>
+        )}
+
+        {/* ── Reports by Category (historical comparison) ── */}
+        {reports.length > 0 && (
+          <ReportHistoryPanel reports={reports} />
         )}
       </div>
     </AppShell>
