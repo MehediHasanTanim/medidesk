@@ -1,6 +1,12 @@
+import hashlib
+import json
+import logging
+import time
 import uuid
 from datetime import date
 
+from django.db import close_old_connections
+from django.http import StreamingHttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -8,7 +14,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from application.dtos.appointment_dto import BookAppointmentDTO
+logger = logging.getLogger(__name__)
+
+from application.dtos.appointment_dto import BookAppointmentDTO, WalkInAppointmentDTO
 from interfaces.api.container import Container
 from interfaces.api.v1.appointments.serializers import (
     AppointmentListItemSerializer,
@@ -18,7 +26,9 @@ from interfaces.api.v1.appointments.serializers import (
     QueueItemSerializer,
     StatusUpdateSerializer,
     UpdateAppointmentSerializer,
+    WalkInSerializer,
 )
+from interfaces.api.v1.mixins import AuditMixin
 from interfaces.permissions import ModulePermission, ReceptionistChamberScopeMixin, RolePermission
 
 
@@ -51,7 +61,92 @@ def _apply_clinical_scope(request, qs):
     return qs, None
 
 
-class BookAppointmentView(ReceptionistChamberScopeMixin, APIView):
+_AVG_CONSULTATION_MINUTES = 10  # assumed average consultation duration for ETA calculation
+
+
+def _build_queue_items(request, target_date: date, chamber_id_str: str | None) -> dict:
+    """Return serialised queue data for target_date, applying RBAC scoping.
+
+    Returns a dict::
+        {
+          "queue": [<serialised QueueItem>, …],
+          "now_serving": <token_number of in_progress patient> | None,
+        }
+
+    Each item carries two computed ETA fields:
+      - ``queue_position``: 0 = currently in progress, 1 = next up, 2 = second, …
+      - ``estimated_wait_minutes``: based on _AVG_CONSULTATION_MINUTES per slot.
+
+    Shared between QueueView (REST) and QueueSSEView (streaming).
+    """
+    from infrastructure.orm.models.appointment_model import AppointmentModel
+    from interfaces.api.v1.appointments.serializers import QueueItemSerializer
+
+    qs = AppointmentModel.objects.filter(
+        scheduled_at__date=target_date,
+        status__in=["confirmed", "in_queue", "in_progress"],
+    ).select_related("patient").order_by("token_number")
+
+    qs, _ = _apply_clinical_scope(request, qs)
+
+    role = getattr(request.user, "role", None)
+    if role not in ("doctor", "assistant_doctor") and chamber_id_str:
+        try:
+            qs = qs.filter(chamber_id=uuid.UUID(chamber_id_str))
+        except ValueError:
+            pass
+
+    # Separate in_progress from waiting to compute ETA correctly
+    in_progress_rows = [m for m in qs if m.status == "in_progress"]
+    waiting_rows = [m for m in qs if m.status in ("in_queue", "confirmed")]
+    has_in_progress = len(in_progress_rows) > 0
+
+    items = []
+
+    # In-progress patients are being seen right now
+    for m in in_progress_rows:
+        items.append({
+            "id": str(m.id),
+            "token_number": m.token_number,
+            "patient_id": str(m.patient_id),
+            "patient_name": m.patient.full_name,
+            "patient_phone": str(m.patient.phone),
+            "scheduled_at": m.scheduled_at.isoformat(),
+            "appointment_type": m.appointment_type,
+            "status": m.status,
+            "notes": m.notes or "",
+            "queue_position": 0,
+            "estimated_wait_minutes": 0,
+        })
+
+    # Waiting patients ranked 1, 2, 3…
+    # When a consultation is in progress, the 1st-in-line waits one full slot;
+    # when the doctor is free, the 1st-in-line waits 0 minutes.
+    for rank, m in enumerate(waiting_rows, start=1):
+        wait = rank * _AVG_CONSULTATION_MINUTES if has_in_progress else (rank - 1) * _AVG_CONSULTATION_MINUTES
+        items.append({
+            "id": str(m.id),
+            "token_number": m.token_number,
+            "patient_id": str(m.patient_id),
+            "patient_name": m.patient.full_name,
+            "patient_phone": str(m.patient.phone),
+            "scheduled_at": m.scheduled_at.isoformat(),
+            "appointment_type": m.appointment_type,
+            "status": m.status,
+            "notes": m.notes or "",
+            "queue_position": rank,
+            "estimated_wait_minutes": wait,
+        })
+
+    now_serving = in_progress_rows[0].token_number if in_progress_rows else None
+    return {
+        "queue": QueueItemSerializer(items, many=True).data,
+        "now_serving": now_serving,
+    }
+
+
+class BookAppointmentView(AuditMixin, ReceptionistChamberScopeMixin, APIView):
+    audit_resource_type = "appointment"
     permission_classes = [IsAuthenticated, ModulePermission("appointments")]
 
     @extend_schema(
@@ -223,8 +318,6 @@ class QueueView(APIView):
         responses={200: QueueItemSerializer(many=True)},
     )
     def get(self, request: Request) -> Response:
-        from infrastructure.orm.models.appointment_model import AppointmentModel
-
         target_date_str = request.query_params.get("date", date.today().isoformat())
         chamber_id_str = request.query_params.get("chamber_id")
 
@@ -233,48 +326,18 @@ class QueueView(APIView):
         except ValueError:
             return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        qs = AppointmentModel.objects.filter(
-            scheduled_at__date=target_date,
-            status__in=["confirmed", "in_queue", "in_progress"],
-        ).select_related("patient").order_by("token_number")
-
-        qs, scope_err = _apply_clinical_scope(request, qs)
-        if scope_err:
-            return scope_err
-
-        # For non-clinical roles, allow optional chamber_id filter from query param.
-        # For clinical roles, chamber scope is already applied by _apply_clinical_scope.
-        role = getattr(request.user, "role", None)
-        if role not in ("doctor", "assistant_doctor"):
-            if chamber_id_str:
-                try:
-                    qs = qs.filter(chamber_id=uuid.UUID(chamber_id_str))
-                except ValueError:
-                    return Response({"error": "Invalid chamber_id."}, status=status.HTTP_400_BAD_REQUEST)
-
-        items = []
-        for m in qs:
-            items.append({
-                "id": str(m.id),
-                "token_number": m.token_number,
-                "patient_id": str(m.patient_id),
-                "patient_name": m.patient.full_name,
-                "patient_phone": str(m.patient.phone),
-                "scheduled_at": m.scheduled_at.isoformat(),
-                "appointment_type": m.appointment_type,
-                "status": m.status,
-                "notes": m.notes,
-            })
-
+        result = _build_queue_items(request, target_date, chamber_id_str)
         return Response({
             "date": target_date_str,
-            "total": len(items),
-            "queue": QueueItemSerializer(items, many=True).data,
+            "total": len(result["queue"]),
+            "queue": result["queue"],
+            "now_serving": result["now_serving"],
         })
 
 
-class AppointmentStatusView(ReceptionistChamberScopeMixin, APIView):
+class AppointmentStatusView(AuditMixin, ReceptionistChamberScopeMixin, APIView):
     """Generic status transitions (confirm, cancel, no_show, in_progress, completed)."""
+    audit_resource_type = "appointment"
     # ModulePermission enforces appointments.update from the matrix;
     # RolePermission further restricts status transitions to clinical+reception
     # staff only (assistant role may update appointment fields but not lifecycle status).
@@ -339,8 +402,9 @@ class AppointmentStatusView(ReceptionistChamberScopeMixin, APIView):
         return Response({"id": str(appt.id), "status": appt.status.value})
 
 
-class AppointmentDetailView(ReceptionistChamberScopeMixin, APIView):
+class AppointmentDetailView(AuditMixin, ReceptionistChamberScopeMixin, APIView):
     """Retrieve or edit a single appointment's fields (not status)."""
+    audit_resource_type = "appointment"
     permission_classes = [IsAuthenticated, ModulePermission("appointments")]
 
     @extend_schema(
@@ -448,6 +512,21 @@ class AppointmentDetailView(ReceptionistChamberScopeMixin, APIView):
                 )
             m.doctor_id = data["doctor_id"]
 
+        # Slot conflict check: only needed when scheduled_at or doctor_id changed
+        if "scheduled_at" in data or "doctor_id" in data:
+            from infrastructure.repositories.django_appointment_repository import DjangoAppointmentRepository
+            repo = DjangoAppointmentRepository()
+            if repo.has_conflict(m.doctor_id, m.scheduled_at, exclude_appointment_id=appointment_id):
+                return Response(
+                    {
+                        "error": (
+                            "This time slot is already booked for the selected doctor. "
+                            "Please choose a different time (minimum 15-minute gap required)."
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         m.save()
 
         # Re-fetch with related for response
@@ -481,8 +560,9 @@ class AppointmentDetailView(ReceptionistChamberScopeMixin, APIView):
     request=None,
     responses={200: CheckInResponseSerializer},
 )
-class CheckInView(ReceptionistChamberScopeMixin, APIView):
+class CheckInView(AuditMixin, ReceptionistChamberScopeMixin, APIView):
     # Check-in is a POST but semantically updates an appointment's status;
+    audit_resource_type = "appointment"
     # action="update" maps this to the appointments.update matrix entry.
     permission_classes = [IsAuthenticated, ModulePermission("appointments", action="update")]
 
@@ -512,3 +592,120 @@ class CheckInView(ReceptionistChamberScopeMixin, APIView):
             "status": appt.status.value,
             "token_number": appt.token_number,
         }, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=["appointments"],
+    summary="Register walk-in patient",
+    description=(
+        "Create a walk-in appointment and immediately add the patient to today's queue. "
+        "Sets scheduled_at to now (UTC), appointment_type to walk_in, and status to in_queue "
+        "with the next available token — no separate check-in step required. "
+        "Accessible to receptionist and assistant."
+    ),
+    request=WalkInSerializer,
+    responses={201: AppointmentResponseSerializer},
+)
+class WalkInView(AuditMixin, ReceptionistChamberScopeMixin, APIView):
+    audit_resource_type = "appointment"
+    permission_classes = [
+        IsAuthenticated,
+        ModulePermission("appointments"),
+        RolePermission(["receptionist", "assistant"]),
+    ]
+
+    def post(self, request: Request) -> Response:
+        serializer = WalkInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        provided_doctor_id = data.get("doctor_id")
+        if not provided_doctor_id:
+            return Response(
+                {"error": "doctor_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        chamber_id = str(data["chamber_id"]) if data.get("chamber_id") else None
+        scope_err = self.check_chamber_scope(request, chamber_id)
+        if scope_err:
+            return scope_err
+
+        dto = WalkInAppointmentDTO(
+            patient_id=str(data["patient_id"]),
+            doctor_id=str(provided_doctor_id),
+            chamber_id=chamber_id,
+            notes=data.get("notes", ""),
+            created_by_id=str(request.user.id),
+        )
+        try:
+            result = Container.walk_in_appointment().execute(dto)
+            return Response(AppointmentResponseSerializer(result.__dict__).data, status=status.HTTP_201_CREATED)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class QueueSSEView(APIView):
+    """
+    GET /appointments/queue/stream/
+
+    Server-Sent Events endpoint for live queue updates.
+    Pushes a new event whenever the queue changes (checked every 3 s).
+    Sends a heartbeat comment every 30 s to prevent proxy timeouts.
+    Automatically stops after 10 minutes — the client's EventSource will
+    reconnect and resume seamlessly.
+
+    Auth: reads the JWT access token from the ?token= query param because
+    the browser EventSource API cannot set Authorization headers.
+
+    Gunicorn note: each open SSE connection occupies one WSGI worker for its
+    lifetime.  For a typical clinic (< 10 simultaneous viewers) this is fine.
+    Consider async workers (--worker-class geventlet) for larger deployments.
+    """
+    from interfaces.api.v1.sse_auth import QueryParamJWTAuthentication
+    authentication_classes = [QueryParamJWTAuthentication]
+    permission_classes = [IsAuthenticated, ModulePermission("appointments")]
+
+    _POLL_INTERVAL = 3       # seconds between DB checks
+    _HEARTBEAT_EVERY = 10    # iterations between heartbeat comments (= 30 s)
+    _MAX_ITERATIONS = 200    # stop after ~10 minutes; client auto-reconnects
+
+    def get(self, request: Request) -> StreamingHttpResponse:
+        target_date = date.today()
+        chamber_id_str = request.query_params.get("chamber_id")
+
+        def event_stream():
+            last_hash = None
+            heartbeat_counter = 0
+            for _ in range(self._MAX_ITERATIONS):
+                try:
+                    close_old_connections()
+                    result = _build_queue_items(request, target_date, chamber_id_str)
+                    payload = json.dumps({
+                        "date": target_date.isoformat(),
+                        "total": len(result["queue"]),
+                        "queue": list(result["queue"]),
+                        "now_serving": result["now_serving"],
+                    })
+                    current_hash = hashlib.md5(payload.encode()).hexdigest()
+                    if current_hash != last_hash:
+                        last_hash = current_hash
+                        yield f"data: {payload}\n\n"
+                except Exception as exc:
+                    logger.error("QueueSSE stream error: %s", exc)
+                    yield f"event: error\ndata: {{}}\n\n"
+
+                heartbeat_counter += 1
+                if heartbeat_counter >= self._HEARTBEAT_EVERY:
+                    yield ": ping\n\n"
+                    heartbeat_counter = 0
+
+                time.sleep(self._POLL_INTERVAL)
+
+            # Signal the client to reconnect for a fresh stream
+            yield "event: reconnect\ndata: {}\n\n"
+
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"   # disable nginx response buffering
+        return response

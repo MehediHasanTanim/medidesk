@@ -27,7 +27,7 @@ TokenBlacklistView = extend_schema(
     responses={200: MessageSerializer},
 )(TokenBlacklistView)
 from interfaces.api.v1.patients.views import PatientRegistrationView, PatientDetailView, PatientSearchView, PatientHistoryView, PatientNoteCreateView
-from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, AppointmentDetailView, AppointmentStatusView, CheckInView
+from interfaces.api.v1.appointments.views import BookAppointmentView, QueueView, QueueSSEView, AppointmentDetailView, AppointmentStatusView, CheckInView, WalkInView
 from interfaces.api.v1.doctors.views import (
     SpecialityListView,
     SpecialityDetailView,
@@ -68,10 +68,14 @@ from interfaces.api.v1.test_orders.views import (
 from interfaces.api.v1.users.views import UserListView, UserDetailView, DoctorsListView
 from interfaces.api.v1.chambers.views import ChamberListView, ChamberDetailView
 from interfaces.api.v1.dashboard.views import DashboardView
+from interfaces.api.v1.audit_logs.views import AuditLogListView
 
 urlpatterns = [
     # ── Dashboard ─────────────────────────────────────────────────────────────
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+
+    # ── Audit logs ────────────────────────────────────────────────────────────
+    path("audit-logs/", AuditLogListView.as_view(), name="audit_log_list"),
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     path("auth/login/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
@@ -99,6 +103,8 @@ urlpatterns = [
     # ── Appointments ──────────────────────────────────────────────────────────
     path("appointments/", BookAppointmentView.as_view(), name="book_appointment"),
     path("appointments/queue/", QueueView.as_view(), name="queue"),
+    path("appointments/queue/stream/", QueueSSEView.as_view(), name="queue_sse"),
+    path("appointments/walk-in/", WalkInView.as_view(), name="walk_in"),
     path("appointments/<uuid:appointment_id>/", AppointmentDetailView.as_view(), name="appointment_detail"),
     path("appointments/<uuid:appointment_id>/check-in/", CheckInView.as_view(), name="appointment_check_in"),
     path("appointments/<uuid:appointment_id>/status/", AppointmentStatusView.as_view(), name="appointment_status"),

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
 
@@ -67,6 +67,25 @@ class DjangoAppointmentRepository(IAppointmentRepository):
     def get_by_patient(self, patient_id: UUID, limit: int = 20) -> List[Appointment]:
         qs = AppointmentModel.objects.filter(patient_id=patient_id).order_by("-scheduled_at")[:limit]
         return [self._to_domain(m) for m in qs]
+
+    def has_conflict(
+        self,
+        doctor_id: UUID,
+        scheduled_at: datetime,
+        exclude_appointment_id: Optional[UUID] = None,
+        slot_minutes: int = 15,
+    ) -> bool:
+        window_start = scheduled_at - timedelta(minutes=slot_minutes)
+        window_end = scheduled_at + timedelta(minutes=slot_minutes)
+        qs = AppointmentModel.objects.filter(
+            doctor_id=doctor_id,
+            scheduled_at__gt=window_start,
+            scheduled_at__lt=window_end,
+            status__in=["scheduled", "confirmed", "in_queue", "in_progress"],
+        )
+        if exclude_appointment_id:
+            qs = qs.exclude(id=exclude_appointment_id)
+        return qs.exists()
 
     @staticmethod
     def _to_domain(model: AppointmentModel) -> Appointment:

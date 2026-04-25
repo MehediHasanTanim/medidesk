@@ -1,36 +1,35 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import timezone as tz, datetime
 
 from domain.entities.appointment import Appointment, AppointmentStatus, AppointmentType
 from domain.repositories.i_unit_of_work import IUnitOfWork
 from domain.services.i_notification_service import INotificationService
-from application.dtos.appointment_dto import AppointmentResponseDTO, BookAppointmentDTO
+from application.dtos.appointment_dto import AppointmentResponseDTO, WalkInAppointmentDTO
 
 logger = logging.getLogger(__name__)
 
 
-class BookAppointmentUseCase:
+class WalkInAppointmentUseCase:
+    """Create a walk-in appointment and immediately add the patient to the queue.
+
+    Unlike the normal booking flow this skips slot-conflict checking (walk-ins
+    arrive unscheduled) and jumps straight to IN_QUEUE status with a token
+    assigned, so the receptionist needs only one action.
+    """
 
     def __init__(self, uow: IUnitOfWork, notification_service: INotificationService) -> None:
         self._uow = uow
         self._notification = notification_service
 
-    def execute(self, dto: BookAppointmentDTO) -> AppointmentResponseDTO:
+    def execute(self, dto: WalkInAppointmentDTO) -> AppointmentResponseDTO:
         with self._uow:
             patient = self._uow.patients.get_by_id(uuid.UUID(dto.patient_id))
             if not patient:
                 raise ValueError(f"Patient {dto.patient_id} not found")
 
-            scheduled_at = datetime.fromisoformat(dto.scheduled_at)
+            scheduled_at = datetime.now(tz.utc)
             chamber_id = uuid.UUID(dto.chamber_id) if dto.chamber_id else None
-
-            if self._uow.appointments.has_conflict(uuid.UUID(dto.doctor_id), scheduled_at):
-                raise ValueError(
-                    "This time slot is already booked for the selected doctor. "
-                    "Please choose a different time (minimum 15-minute gap required)."
-                )
-
             token = self._uow.appointments.get_next_token(scheduled_at.date(), chamber_id)
 
             appointment = Appointment(
@@ -39,8 +38,8 @@ class BookAppointmentUseCase:
                 doctor_id=uuid.UUID(dto.doctor_id),
                 chamber_id=chamber_id,
                 scheduled_at=scheduled_at,
-                appointment_type=AppointmentType(dto.appointment_type),
-                status=AppointmentStatus.SCHEDULED,
+                appointment_type=AppointmentType.WALK_IN,
+                status=AppointmentStatus.IN_QUEUE,
                 token_number=token,
                 notes=dto.notes,
                 created_by_id=uuid.UUID(dto.created_by_id) if dto.created_by_id else None,
@@ -49,11 +48,10 @@ class BookAppointmentUseCase:
             saved = self._uow.appointments.save(appointment)
             self._uow.commit()
 
-        # Notification is outside the transaction (non-blocking)
         try:
             self._notification.send_appointment_confirmation(patient, saved)
         except Exception as exc:
-            logger.error("Notification failed after booking: %s", exc)
+            logger.error("Notification failed after walk-in booking: %s", exc)
 
         return AppointmentResponseDTO(
             id=str(saved.id),

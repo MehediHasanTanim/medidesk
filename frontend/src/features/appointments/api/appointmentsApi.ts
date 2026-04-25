@@ -66,12 +66,18 @@ export interface QueueItem {
   appointment_type: string;
   status: string;
   notes: string;
+  /** 0 = currently being seen, 1 = next up, 2 = second in line, … */
+  queue_position: number;
+  /** Estimated minutes until this patient is seen (based on 10-min avg consultation). */
+  estimated_wait_minutes: number;
 }
 
 export interface QueueResponse {
   date: string;
   total: number;
   queue: QueueItem[];
+  /** Token number of the patient currently in_progress, or null if nobody is being seen. */
+  now_serving: number | null;
 }
 
 export type AppointmentStatus =
@@ -88,6 +94,13 @@ export interface UpdateAppointmentPayload {
   scheduled_at?: string; // ISO datetime
   appointment_type?: "new" | "follow_up" | "walk_in";
   chamber_id?: string | null;
+  notes?: string;
+}
+
+export interface WalkInPayload {
+  patient_id: string;
+  doctor_id: string;
+  chamber_id?: string;
   notes?: string;
 }
 
@@ -135,4 +148,8 @@ export const appointmentsApi = {
     apiClient
       .patch<{ id: string; status: string }>(`/appointments/${appointmentId}/status/`, { status })
       .then((r) => r.data),
+
+  /** POST /appointments/walk-in/ — book + immediately queue in one step */
+  walkIn: (payload: WalkInPayload) =>
+    apiClient.post<AppointmentResponse>("/appointments/walk-in/", payload).then((r) => r.data),
 };

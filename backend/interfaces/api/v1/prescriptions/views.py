@@ -25,6 +25,8 @@ from interfaces.api.v1.prescriptions.serializers import (
     PrescriptionResponseSerializer,
     UpdatePrescriptionSerializer,
 )
+from infrastructure.services.audit_service import get_audit_service
+from interfaces.api.v1.mixins import AuditMixin, _get_client_ip
 from interfaces.permissions import ADMIN_ROLES, ModulePermission, RolePermission
 
 
@@ -60,10 +62,11 @@ def _prescription_to_dict(p: Prescription) -> Dict[str, Any]:
 # ── Views ─────────────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["prescriptions"])
-class PrescriptionView(APIView):
+class PrescriptionView(AuditMixin, APIView):
     """
     POST /prescriptions/  — create a prescription for a completed consultation.
     """
+    audit_resource_type = "prescription"
     permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
 
     @extend_schema(
@@ -112,11 +115,12 @@ class PrescriptionView(APIView):
 
 
 @extend_schema(tags=["prescriptions"])
-class PrescriptionDetailView(APIView):
+class PrescriptionDetailView(AuditMixin, APIView):
     """
     GET   /prescriptions/<id>/  — retrieve a single prescription (clinical staff only).
     PATCH /prescriptions/<id>/  — edit items on a draft prescription (doctors only).
     """
+    audit_resource_type = "prescription"
     permission_classes = [IsAuthenticated, ModulePermission("prescriptions")]
 
     @extend_schema(
@@ -128,6 +132,13 @@ class PrescriptionDetailView(APIView):
         prescription = DjangoPrescriptionRepository().get_by_id(prescription_id)
         if not prescription:
             return Response({"error": "Prescription not found"}, status=status.HTTP_404_NOT_FOUND)
+        get_audit_service().log(
+            action="VIEW",
+            resource_type="prescription",
+            resource_id=str(prescription_id),
+            user_id=request.user.id if request.user.is_authenticated else None,
+            ip_address=_get_client_ip(request),
+        )
         return Response(_prescription_to_dict(prescription))
 
 
@@ -212,8 +223,9 @@ class PrescriptionByConsultationView(APIView):
 
 
 @extend_schema(tags=["prescriptions"])
-class ApprovePrescriptionView(APIView):
+class ApprovePrescriptionView(AuditMixin, APIView):
     # POST /approve/ is semantically an update (draft → approved).
+    audit_resource_type = "prescription"
     # RolePermission further restricts to doctor-only within prescriptions.update.
     permission_classes = [
         IsAuthenticated,
@@ -260,6 +272,23 @@ class ApprovePrescriptionView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         repo.save(prescription)
+
+        # Auto-schedule follow-up appointment for approved draft prescriptions.
+        if prescription.follow_up_date:
+            import logging
+            _log = logging.getLogger(__name__)
+            try:
+                from application.use_cases.appointment.schedule_follow_up import ScheduleFollowUpUseCase
+                from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
+                ScheduleFollowUpUseCase(uow=DjangoUnitOfWork()).execute(
+                    consultation_id=prescription.consultation_id,
+                    patient_id=prescription.patient_id,
+                    follow_up_date=prescription.follow_up_date,
+                    created_by_id=request.user.id,
+                )
+            except Exception as exc:
+                _log.error("Failed to auto-schedule follow-up after approval: %s", exc)
+
         return Response({
             "prescription_id": str(prescription.id),
             "status": prescription.status.value,

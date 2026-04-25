@@ -8,6 +8,7 @@ from infrastructure.services.whatsapp_service import WhatsAppNotificationService
 from infrastructure.unit_of_work.django_unit_of_work import DjangoUnitOfWork
 from infrastructure.repositories.django_doctor_repository import DjangoDoctorRepository
 from application.use_cases.appointment.book_appointment import BookAppointmentUseCase
+from application.use_cases.appointment.walk_in_appointment import WalkInAppointmentUseCase
 from application.use_cases.consultation.start_consultation import StartConsultationUseCase
 from application.use_cases.consultation.complete_consultation import CompleteConsultationUseCase
 from application.use_cases.consultation.get_consultation import GetConsultationUseCase
@@ -48,6 +49,13 @@ class Container:
     @staticmethod
     def book_appointment() -> BookAppointmentUseCase:
         return BookAppointmentUseCase(
+            uow=DjangoUnitOfWork(),
+            notification_service=Container.notification_service(),
+        )
+
+    @staticmethod
+    def walk_in_appointment() -> WalkInAppointmentUseCase:
+        return WalkInAppointmentUseCase(
             uow=DjangoUnitOfWork(),
             notification_service=Container.notification_service(),
         )

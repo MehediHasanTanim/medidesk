@@ -72,9 +72,26 @@ class QueueItemSerializer(serializers.Serializer):
     appointment_type = serializers.CharField()
     status = serializers.CharField()
     notes = serializers.CharField()
+    # ETA / position fields
+    queue_position = serializers.IntegerField(
+        help_text="0 = currently in progress (being seen), 1 = next up, 2 = second in line, …"
+    )
+    estimated_wait_minutes = serializers.IntegerField(
+        help_text="Estimated minutes until the patient is seen, based on a 10-min avg consultation."
+    )
 
 
 class CheckInResponseSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     status = serializers.CharField()
     token_number = serializers.IntegerField(allow_null=True)
+
+
+class WalkInSerializer(serializers.Serializer):
+    patient_id = serializers.UUIDField()
+    doctor_id = serializers.UUIDField(
+        required=False, allow_null=True,
+        help_text="Required for receptionist/assistant. Doctors default to themselves.",
+    )
+    chamber_id = serializers.UUIDField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, default="", allow_blank=True)

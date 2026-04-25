@@ -6,6 +6,7 @@ import Toast, { useToast } from "@/shared/components/Toast";
 import { colors, font, radius, shadow } from "@/shared/styles/theme";
 import { useAuthStore } from "@/features/auth/store/authStore";
 import { appointmentsApi, type QueueItem, type AppointmentListItem } from "@/features/appointments/api/appointmentsApi";
+import { useQueueSSE } from "@/features/appointments/hooks/useQueueSSE";
 import {
   consultationsApi,
   type StartConsultationPayload,
@@ -124,15 +125,15 @@ export default function QueuePage() {
   const { toast, dismiss } = useToast();
   const [startingItem, setStartingItem] = useState<QueueItem | null>(null);
 
-  // Active queue — confirmed / in_queue / in_progress
-  const { data, isLoading, refetch: refetchQueue } = useQuery({
-    queryKey: ["queue-live", today],
-    queryFn: () => appointmentsApi.getQueue(today),
-    refetchInterval: 30_000,
-    staleTime: 0,
-  });
+  // Active queue — live via SSE, falls back to 10 s polling automatically
+  const { data, sseStatus, refetch: refetchQueue } = useQueueSSE(
+    today,
+    undefined,
+    () => appointmentsApi.getQueue(today),
+  );
+  const isLoading = data === null;
 
-  // Completed today — for billing staff to navigate to closed consultations
+  // Completed today — polling is fine (less time-critical)
   const { data: completedData, refetch: refetchCompleted } = useQuery({
     queryKey: ["queue-completed", today],
     queryFn: () => appointmentsApi.list({ date: today, status: "completed", limit: 100 }),
@@ -144,7 +145,6 @@ export default function QueuePage() {
 
   const handleStarted = (appointmentId: string) => {
     setStartingItem(null);
-    qc.invalidateQueries({ queryKey: ["queue-live", today] });
     qc.invalidateQueries({ queryKey: ["queue-completed", today] });
     navigate(`/consultations/${appointmentId}`);
   };
@@ -170,9 +170,23 @@ export default function QueuePage() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: font.xl, fontWeight: 700, color: colors.text }}>
-              Live Queue — {today}
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={{ margin: 0, fontSize: font.xl, fontWeight: 700, color: colors.text }}>
+                Live Queue — {today}
+              </h1>
+              {sseStatus === "live" && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#dcfce7", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 10px", fontSize: font.sm, fontWeight: 600 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block", animation: "pulse 2s infinite" }} />
+                  Live
+                </span>
+              )}
+              {sseStatus === "connecting" && (
+                <span style={{ color: colors.textMuted, fontSize: font.sm }}>Connecting…</span>
+              )}
+              {sseStatus === "polling" && (
+                <span style={{ color: colors.textMuted, fontSize: font.sm }}>↻ Polling</span>
+              )}
+            </div>
             <p style={{ margin: "4px 0 0", color: colors.textMuted, fontSize: font.base }}>
               {data?.total ?? 0} patient{data?.total !== 1 ? "s" : ""} in queue
             </p>
@@ -187,26 +201,56 @@ export default function QueuePage() {
 
         {isLoading && <p style={{ color: colors.textMuted }}>Loading queue…</p>}
 
+        {/* ── Now Serving banner ── */}
+        {data?.now_serving != null && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            background: "#f0fdf4", border: "1px solid #bbf7d0",
+            borderRadius: radius.lg, padding: "12px 20px", marginBottom: 12,
+          }}>
+            <span style={{ fontSize: 20 }}>🩺</span>
+            <span style={{ fontWeight: 700, color: "#15803d", fontSize: font.base }}>
+              Now Serving — Token #{data.now_serving}
+            </span>
+          </div>
+        )}
+
         {/* ── Active queue ── */}
         <div style={{ display: "grid", gap: 12 }}>
           {data?.queue?.map((item: QueueItem) => {
             const ss = STATUS_STYLES[item.status];
+            const isNowServing = item.status === "in_progress";
+
+            // ETA label
+            let etaLabel: string;
+            if (isNowServing) {
+              etaLabel = "Now serving";
+            } else if (item.estimated_wait_minutes === 0) {
+              etaLabel = "Next up · ~0 min";
+            } else {
+              etaLabel = `Queue #${item.queue_position} · ~${item.estimated_wait_minutes} min wait`;
+            }
+
             return (
               <div
                 key={item.id}
                 style={{
-                  background: colors.white,
-                  border: `1px solid ${colors.border}`,
+                  background: isNowServing ? "#f0fdf4" : colors.white,
+                  border: `1px solid ${isNowServing ? "#86efac" : colors.border}`,
                   borderRadius: radius.lg,
                   padding: "16px 20px",
                   display: "flex",
                   alignItems: "center",
                   gap: 20,
-                  boxShadow: shadow.sm,
+                  boxShadow: isNowServing ? "0 0 0 2px #bbf7d0" : shadow.sm,
                 }}
               >
                 {/* Token number */}
-                <div style={{ fontSize: 36, fontWeight: 700, color: colors.primary, minWidth: 60, textAlign: "center" }}>
+                <div style={{
+                  fontSize: 36, fontWeight: 700,
+                  color: isNowServing ? "#15803d" : colors.primary,
+                  minWidth: 60, textAlign: "center",
+                }}>
                   #{item.token_number}
                 </div>
 
@@ -216,8 +260,20 @@ export default function QueuePage() {
                     {item.patient_name}
                   </div>
                   <div style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>
-                    {item.patient_phone} · {item.appointment_type.replace("_", " ")} ·{" "}
+                    {item.patient_phone} · {item.appointment_type.replace(/_/g, " ")} ·{" "}
                     {new Date(item.scheduled_at).toLocaleTimeString("en-BD", { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                  {/* ETA / position chip */}
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    marginTop: 5,
+                    background: isNowServing ? "#dcfce7" : "#f0f9ff",
+                    color: isNowServing ? "#15803d" : "#0369a1",
+                    border: `1px solid ${isNowServing ? "#bbf7d0" : "#bae6fd"}`,
+                    borderRadius: 999, padding: "2px 10px",
+                    fontSize: "11px", fontWeight: 600,
+                  }}>
+                    {isNowServing ? "🟢" : "⏱"} {etaLabel}
                   </div>
                   {item.notes && (
                     <div style={{ color: colors.textMuted, fontSize: font.sm, fontStyle: "italic", marginTop: 4 }}>

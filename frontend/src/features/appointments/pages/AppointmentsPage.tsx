@@ -10,6 +10,7 @@ import {
   type AppointmentListItem,
   type BookAppointmentPayload,
   type UpdateAppointmentPayload,
+  type WalkInPayload,
 } from "@/features/appointments/api/appointmentsApi";
 import { consultationsApi, type StartConsultationPayload } from "@/features/consultations/api/consultationsApi";
 import { chambersApi } from "@/features/chambers/api/chambersApi";
@@ -906,10 +907,229 @@ function EditModal({
   );
 }
 
+// ── WalkInModal ────────────────────────────────────────────────────────────
+function WalkInModal({
+  onClose,
+  onBooked,
+}: {
+  onClose: () => void;
+  onBooked: (tokenNumber: number) => void;
+}) {
+  const [patientSearch, setPatientSearch] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState<{ id: string; full_name: string } | null>(null);
+  const [chamberId, setChamberId] = useState("");
+  const [specialityId, setSpecialityId] = useState("");
+  const [doctorId, setDoctorId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+
+  const { data: patientResults } = useQuery({
+    queryKey: ["patient-search-walkin", patientSearch],
+    queryFn: () =>
+      apiClient.get("/patients/search/", { params: { q: patientSearch } }).then((r) => r.data),
+    enabled: patientSearch.length > 1,
+  });
+
+  const { data: chambersData = [] } = useQuery({
+    queryKey: ["chambers"],
+    queryFn: () => chambersApi.list(),
+  });
+
+  const { data: specialities = [] } = useQuery({
+    queryKey: ["specialities"],
+    queryFn: () => specialitiesApi.list(true),
+  });
+
+  const { data: allDoctors = [], isFetching: doctorsFetching } = useQuery({
+    queryKey: ["doctors-available"],
+    queryFn: () => doctorProfilesApi.list({ is_available: true }),
+    enabled: !!chamberId,
+    staleTime: 2 * 60_000,
+  });
+
+  const filteredDoctors: DoctorProfile[] = !chamberId
+    ? []
+    : allDoctors.filter((d: DoctorProfile) => {
+        const inChamber = d.chamber_ids.includes(chamberId);
+        const matchesSpec = !specialityId || d.speciality_id === specialityId;
+        return inChamber && matchesSpec;
+      });
+
+  const qc = useQueryClient();
+  const walkInMutation = useMutation({
+    mutationFn: (payload: WalkInPayload) => appointmentsApi.walkIn(payload),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      onBooked(result.token_number ?? 0);
+    },
+    onError: (e: any) => setError(e.response?.data?.error ?? "Walk-in failed"),
+  });
+
+  const handleSubmit = () => {
+    setError("");
+    if (!selectedPatient) return setError("Select a patient");
+    if (!chamberId) return setError("Select a chamber");
+    if (!doctorId) return setError("Select a doctor");
+    walkInMutation.mutate({
+      patient_id: selectedPatient.id,
+      doctor_id: doctorId,
+      chamber_id: chamberId,
+      notes,
+    });
+  };
+
+  const inputStyle = {
+    width: "100%",
+    padding: "8px 12px",
+    borderRadius: radius.md,
+    border: `1px solid ${colors.border}`,
+    fontSize: font.base,
+    boxSizing: "border-box" as const,
+    background: colors.white,
+  };
+  const labelStyle = {
+    display: "block",
+    fontSize: font.sm,
+    fontWeight: 600 as const,
+    color: colors.textMuted,
+    marginBottom: 6,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.04em",
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      <div style={{ background: colors.white, borderRadius: radius.lg, padding: 28, width: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: shadow.lg }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <span style={{ background: "#7c3aed", color: "#fff", borderRadius: radius.md, padding: "2px 10px", fontSize: font.sm, fontWeight: 700, letterSpacing: "0.04em" }}>
+            WALK-IN
+          </span>
+          <h2 style={{ margin: 0, fontSize: font.lg, fontWeight: 700, color: colors.text }}>
+            Register Walk-in Patient
+          </h2>
+        </div>
+        <p style={{ margin: "0 0 20px", fontSize: font.sm, color: colors.textMuted }}>
+          Patient will be added to today's queue immediately with the next available token.
+        </p>
+
+        {error && (
+          <div style={{ background: "#fef2f2", color: colors.danger, border: `1px solid #fecaca`, borderRadius: radius.md, padding: "10px 14px", marginBottom: 14, fontSize: font.sm }}>
+            {error}
+          </div>
+        )}
+
+        {/* Patient search */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Patient</label>
+          {selectedPatient ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: `1px solid ${colors.primary}`, borderRadius: radius.md, background: colors.primaryLight }}>
+              <span style={{ flex: 1, fontSize: font.base, color: colors.text, fontWeight: 500 }}>{selectedPatient.full_name}</span>
+              <button onClick={() => setSelectedPatient(null)} style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, fontSize: font.sm }}>✕</button>
+            </div>
+          ) : (
+            <>
+              <input
+                autoFocus
+                placeholder="Search by name or phone…"
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+                style={inputStyle}
+              />
+              {patientResults?.results?.length > 0 && (
+                <div style={{ border: `1px solid ${colors.border}`, borderRadius: radius.md, marginTop: 4, background: colors.white, boxShadow: shadow.md, maxHeight: 180, overflowY: "auto" }}>
+                  {patientResults.results.map((p: any) => (
+                    <div
+                      key={p.id}
+                      onClick={() => { setSelectedPatient({ id: p.id, full_name: p.full_name }); setPatientSearch(""); }}
+                      style={{ padding: "8px 12px", cursor: "pointer", fontSize: font.base, borderBottom: `1px solid ${colors.border}` }}
+                    >
+                      <strong>{p.full_name}</strong> · {p.phone}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Chamber */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Chamber</label>
+          <select value={chamberId} onChange={(e) => { setChamberId(e.target.value); setDoctorId(""); }} style={inputStyle}>
+            <option value="">Select chamber…</option>
+            {chambersData?.map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Speciality filter */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Speciality (optional filter)</label>
+          <select value={specialityId} onChange={(e) => { setSpecialityId(e.target.value); setDoctorId(""); }} style={inputStyle}>
+            <option value="">All specialities</option>
+            {specialities.map((s: any) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Doctor */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Doctor</label>
+          <select
+            value={doctorId}
+            onChange={(e) => setDoctorId(e.target.value)}
+            disabled={!chamberId || doctorsFetching}
+            style={{ ...inputStyle, background: !chamberId ? colors.bg : colors.white, color: !chamberId ? colors.textMuted : colors.text }}
+          >
+            <option value="">
+              {!chamberId ? "Select a chamber first…" : doctorsFetching ? "Loading…" : filteredDoctors.length === 0 ? "No available doctors" : "Select doctor…"}
+            </option>
+            {filteredDoctors.map((d: DoctorProfile) => (
+              <option key={d.user_id} value={d.user_id}>{d.full_name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Notes */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={labelStyle}>Notes (optional)</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            placeholder="Chief complaints or any notes…"
+            style={{ ...inputStyle, resize: "vertical" as const }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{ padding: "9px 20px", background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, cursor: "pointer", fontSize: font.base }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={walkInMutation.isPending}
+            style={{ padding: "9px 22px", background: "#7c3aed", color: colors.white, border: "none", borderRadius: radius.md, cursor: "pointer", fontSize: font.base, fontWeight: 600, opacity: walkInMutation.isPending ? 0.7 : 1 }}
+          >
+            {walkInMutation.isPending ? "Adding…" : "Add to Queue"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function AppointmentsPage() {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentListItem | null>(null);
   const [startingAppt, setStartingAppt] = useState<AppointmentListItem | null>(null);
   const [selectedDate, setSelectedDate] = useState(
@@ -924,6 +1144,7 @@ export default function AppointmentsPage() {
     user?.role ?? ""
   );
   const isClinical = ["doctor", "assistant_doctor"].includes(user?.role ?? "");
+  const canWalkIn = ["receptionist", "assistant"].includes(user?.role ?? "");
 
   const { data, isLoading } = useQuery({
     queryKey: ["appointments", selectedDate, offset],
@@ -974,6 +1195,15 @@ export default function AppointmentsPage() {
           onBooked={() => {
             setShowModal(false);
             showToast("Appointment booked successfully", "success");
+          }}
+        />
+      )}
+      {showWalkInModal && (
+        <WalkInModal
+          onClose={() => setShowWalkInModal(false)}
+          onBooked={(token) => {
+            setShowWalkInModal(false);
+            showToast(`Walk-in registered — Token #${token}`, "success");
           }}
         />
       )}
@@ -1046,6 +1276,23 @@ export default function AppointmentsPage() {
                 background: colors.white,
               }}
             />
+            {canWalkIn && (
+              <button
+                onClick={() => setShowWalkInModal(true)}
+                style={{
+                  padding: "9px 20px",
+                  background: "#7c3aed",
+                  color: colors.white,
+                  border: "none",
+                  borderRadius: radius.md,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: font.base,
+                }}
+              >
+                Walk In
+              </button>
+            )}
             <button
               onClick={() => setShowModal(true)}
               style={{

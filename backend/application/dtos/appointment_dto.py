@@ -24,6 +24,15 @@ class UpdateAppointmentDTO:
 
 
 @dataclass
+class WalkInAppointmentDTO:
+    patient_id: str
+    doctor_id: str
+    chamber_id: Optional[str] = None
+    notes: str = ""
+    created_by_id: Optional[str] = None
+
+
+@dataclass
 class AppointmentResponseDTO:
     id: str
     patient_id: str
