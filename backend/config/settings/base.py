@@ -151,6 +151,9 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Asia/Dhaka"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -165,16 +168,51 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
+        "django_file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": LOGS_DIR / "django.log",
+            "when": "midnight",
+            "backupCount": 14,
+            "formatter": "verbose",
+            "encoding": "utf-8",
+        },
+        "app_file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": LOGS_DIR / "app.log",
+            "when": "midnight",
+            "backupCount": 14,
+            "formatter": "verbose",
+            "encoding": "utf-8",
+        },
+        "rbac_file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": LOGS_DIR / "rbac.log",
+            "when": "midnight",
+            "backupCount": 30,
+            "formatter": "verbose",
+            "encoding": "utf-8",
+        },
     },
     "loggers": {
         "medidesk.rbac": {
-            "handlers": ["console"],
+            "handlers": ["console", "rbac_file"],
             "level": "WARNING",
             "propagate": False,
         },
         "django": {
-            "handlers": ["console"],
+            "handlers": ["console", "django_file"],
             "level": "INFO",
+            "propagate": False,
+        },
+        # Captures all application.* and infrastructure.* module loggers
+        "application": {
+            "handlers": ["console", "app_file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "infrastructure": {
+            "handlers": ["console", "app_file"],
+            "level": "DEBUG",
             "propagate": False,
         },
     },

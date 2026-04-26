@@ -144,7 +144,12 @@
       "Bash(find \"/Users/tanim/WorkSpace/Personal/VibeCoding/Claude Code/MediDesk/backend/infrastructure/orm/models\" -name \"*.py\" -exec basename {} \\\\;)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8005/api/v1/test-orders/mine/)",
       "Bash(.venv/bin/python manage.py shell -c ' *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git -C \"/Users/tanim/WorkSpace/Personal/VibeCoding/Claude Code/MediDesk\" status)",
+      "Bash(git -C \"/Users/tanim/WorkSpace/Personal/VibeCoding/Claude Code/MediDesk\" diff --stat)",
+      "Bash(git -C \"/Users/tanim/WorkSpace/Personal/VibeCoding/Claude Code/MediDesk\" log --oneline -5)"
     ]
   }
 }
